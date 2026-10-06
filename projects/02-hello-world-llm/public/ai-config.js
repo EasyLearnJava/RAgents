@@ -5,7 +5,7 @@
 export const MODEL = "gemini-3.8-flash";
 
 // App Check site key (reCAPTCHA Enterprise). AI Logic rejects calls without App Check.
-export const RECAPTCHA_SITE_KEY = "";
+export const RECAPTCHA_SITE_KEY = "6LdVR-ItAAAAAGUxQK14RltxPK5uCA1caxO6peEG";
 
 // Leave null on Firebase Hosting: the config loads automatically from /__/firebase/init.json.
 // For local testing (http://127.0.0.1), paste your web app's firebaseConfig object here instead.
