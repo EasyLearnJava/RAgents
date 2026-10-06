@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 1 · Hello World (rules)</title>
+<style>
+  :root { --bg:#f6eedd; --card:#fbf6eb; --ink:#241b15; --muted:#65543f; --you:#4f7bc0; --bot:#c8683e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+         background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  .chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
+          border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
+  header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem; }
+  header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
+  #log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 80%; padding: 8px 14px; border: 2.5px solid var(--ink); border-radius: 16px; color: #fff8ec; white-space: pre-wrap; }
+  .you { align-self: flex-end; background: var(--you); }
+  .bot { align-self: flex-start; background: var(--bot); }
+  form { display: flex; gap: 8px; padding: 12px; border-top: 3px solid var(--ink); }
+  input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+          border: 2.5px solid var(--ink); border-radius: 999px; padding: 8px 14px; }
+  button { font: inherit; font-weight: 800; border: 2.5px solid var(--ink); border-radius: 12px;
+           background: var(--bot); color: #fff8ec; padding: 8px 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <main class="chat">
+    <header>Hello World Agent <small>Step 1 · rules only. Say "Hello" and it says "Hello World".</small></header>
+    <div id="log" aria-live="polite"></div>
+    <form id="form">
+      <input id="msg" autocomplete="off" placeholder="Say Hello…" aria-label="Your message" autofocus>
+      <button type="submit">Send</button>
+    </form>
+  </main>
+<script type="module">
+  import { respond } from "./agent.js";
+  const log = document.getElementById("log");
+  const input = document.getElementById("msg");
+  function add(text, who) {
+    const div = document.createElement("div");
+    div.className = "msg " + who;
+    div.textContent = text;            // textContent, never innerHTML: input is never run as HTML
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+  document.getElementById("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value;
+    if (text.trim()) add(text, "you");
+    add(respond(text), "bot");
+    input.value = "";
+    input.focus();
+  });
+</script>
+</body>
+</html>

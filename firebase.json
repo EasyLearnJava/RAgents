@@ -1,0 +1,13 @@
+{
+  "hosting": {
+    "public": "dist",
+    "predeploy": ["node scripts/build.mjs"],
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "headers": [
+      {
+        "source": "/projects.json",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}

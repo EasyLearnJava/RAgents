@@ -1,0 +1,15 @@
+# build output (recreated by `npm run build`)
+dist/
+
+# Firebase CLI
+.firebase/
+firebase-debug.log
+*-debug.log
+
+# never commit secrets
+.env
+.env.*
+
+node_modules/
+.DS_Store
+Thumbs.db

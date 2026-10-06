@@ -1,0 +1,53 @@
+# RAgents
+
+Agents built one step at a time, from a rule-based Hello World to a real model, and later memory, tools and more.
+Every version is its own project folder. One website shows them all, with a left nav to move between steps.
+
+**Live site:** https://ragent-eec65.web.app (Firebase Hosting, project `ragent-eec65`)
+
+| Step | Project | What it adds |
+|---|---|---|
+| 1 | [`projects/01-hello-world-rules`](projects/01-hello-world-rules) | Say Hello, get Hello World. One rule, no model |
+| 2 | [`projects/02-hello-world-llm`](projects/02-hello-world-llm) | Your message goes to a real model (Gemini via Firebase AI Logic) |
+
+## How the repo works
+
+```text
+RAgents/
+├─ projects/                 one folder per version (step)
+│  ├─ 01-hello-world-rules/
+│  │  ├─ project.json        title, summary, "what you learn": feeds the left nav
+│  │  ├─ public/             the project's web files (deployed as-is)
+│  │  ├─ test/               tests for that step
+│  │  └─ README.md
+│  └─ 02-hello-world-llm/
+├─ shell/index.html          the site: left nav + the selected project
+├─ scripts/build.mjs         builds dist/ from shell/ + every projects/*/public
+├─ scripts/serve.mjs         local preview on http://127.0.0.1:5000
+├─ firebase.json             deploys dist/ (runs the build first)
+└─ .firebaserc               default project: ragent-eec65
+```
+
+The site lists projects from each `project.json`, sorted by `step`. Each project also works on its own at
+`/projects/<folder>/`.
+
+## Everyday commands (run in the repo root)
+
+```powershell
+npm test                         # all projects' tests
+npm run serve                    # build + preview at http://127.0.0.1:5000 (Ctrl+C to stop)
+firebase deploy --only hosting   # build + publish every project to https://ragent-eec65.web.app
+```
+
+On this laptop, run `$env:NODE_OPTIONS = "--use-system-ca"` first in each new terminal: the corporate proxy (Zscaler)
+re-signs HTTPS, and this makes Node trust the Windows certificate store. Step 2 also needs a one-time Firebase setup:
+see [its README](projects/02-hello-world-llm/README.md).
+
+## Adding the next version
+
+1. Copy the latest project folder, e.g. `projects/02-hello-world-llm` → `projects/03-chat-with-history`.
+2. In its `project.json`, set the next `step` number, a `title`, `summary`, `learn` list and `next`.
+3. Change the code, add tests, run `npm test` and `npm run serve`.
+4. Deploy. The new step appears in the left nav automatically.
+
+No other file needs to change.

@@ -1,0 +1,12 @@
+{
+  "step": 1,
+  "title": "Hello World (rules)",
+  "badge": "No model",
+  "summary": "Say Hello and it replies Hello World. One hard-coded rule, running entirely in your browser.",
+  "learn": [
+    "The shape every agent shares: input, decide, reply",
+    "Keeping the logic (agent.js) separate from the page (index.html)",
+    "Testing the logic without a browser (npm test)"
+  ],
+  "next": "It can't understand anything except greetings, so step 2 sends the message to a real model."
+}
