@@ -11,6 +11,7 @@ It matches *Step 1 · Hello World agent* in the notes, with Gemini in place of O
 | `public/ai-config.js` | **The only file you edit:** model name and App Check site key (neither is secret) |
 | `public/index.html` | Chat window with a status badge and a "thinking…" bubble |
 | `test/agent.test.js` | Tests with a fake model (no network needed) |
+| `SAFETY_AND_ABUSE.md` | Why this public project is safe: each risk, how it's handled, and the console checklist |
 
 ## Why there's no API key in the code
 
@@ -19,6 +20,9 @@ and **App Check** proves requests come from *your* site, so nobody can copy your
 Since July 2026 Firebase enforces App Check for AI Logic; without it you get
 `403 - PERMISSION_DENIED: ... you must enforce Firebase App Check`.
 
+**Is it safe to publish?** See [SAFETY_AND_ABUSE.md](SAFETY_AND_ABUSE.md): every risk we anticipated (leaked keys,
+copied code, spam, replayed tokens, surprise bills, XSS from model replies…), how each is handled, and what's still possible.
+
 ## One-time setup in the Firebase console (project RAgent, `ragent-eec65`)
 
 1. **Register a web app:** Project Overview → **Add app** → **Web** (`</>`) → nickname `ragents-web` → **Register app**.
@@ -26,8 +30,9 @@ Since July 2026 Firebase enforces App Check for AI Logic; without it you get
 2. **Turn on AI Logic:** **AI services → AI Logic → Get started** → choose **Gemini Developer API** (works on the free Spark plan) → follow the guided setup.
 3. **Set up App Check:** the guided setup (or **Security → App Check → Apps**) asks for a **reCAPTCHA Enterprise** site key for your web app.
    Create one in Google Cloud console → **Security → reCAPTCHA** → **Create key**, type **Website**, domains
-   `ragent-eec65.web.app`, `ragent-eec65.firebaseapp.com` and `localhost`. Paste it into App Check **and** into
-   `RECAPTCHA_SITE_KEY` in `public/ai-config.js`.
+   `ragent-eec65.web.app` and `ragent-eec65.firebaseapp.com` only. Don't add `localhost`: local testing uses a debug
+   token instead (see below), and allowing `localhost` would let anyone run a copy of the page locally and pass App Check.
+   Paste the key into App Check **and** into `RECAPTCHA_SITE_KEY` in `public/ai-config.js`.
    *Check before you click:* if Google asks to enable billing for reCAPTCHA, stop and decide; this guide hasn't verified whether it's needed.
 4. **Deploy** from the repo root: `firebase deploy --only hosting`, then open https://ragent-eec65.web.app and pick step 2.
    The badge in the chat header turns green with the model name when everything is connected.
