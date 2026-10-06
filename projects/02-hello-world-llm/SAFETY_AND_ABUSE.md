@@ -67,7 +67,8 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 ### 5. The Firebase browser API key is "unrestricted"
 - **Risk:** the Cloud console warns that the project has an unrestricted API key. Unrestricted means it works from any
   website and for any enabled API.
-- **How we solve it:** restrict it to our websites and to only the Firebase APIs the page needs (console checklist item C).
+- **How we solve it:** Firebase already limited the key to its own APIs (not the Gemini API). We add a website
+  restriction so it only works from our two domains (console checklist item C).
   App Check still protects AI Logic even before this is done; this is defence in depth.
 
 ### 6. One visitor (or a bot driving a real browser) spams messages on our real site
@@ -128,18 +129,19 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 | ✅ | Register web app `ragents-web` | Firebase → Project Overview → Add app → Web | Done |
 | ✅ | App Check with reCAPTCHA Enterprise for `ragents-web` | Firebase → App Check → Apps | Done |
 | ✅ | Turn on AI Logic (Gemini Developer API) + **enforce** App Check | Firebase → AI Logic → Get started | Done |
-| ⬜ | **A.** Remove `localhost` from the reCAPTCHA key's domains | Google Cloud → Security → Fraud Defense → key `ragents-web` → Edit key → Domain list → 🗑 `localhost` → Save changes | To do |
-| ⬜ | **B.** Lower the per-user rate limit for AI Logic (e.g. 10 requests/minute) | Firebase → AI Logic → Settings | To do |
+| ✅ | **A.** Remove `localhost` from the reCAPTCHA key's domains | Google Cloud → Security → Fraud Defense → key `ragents-web` → Edit key → Domain list → 🗑 `localhost` → Save changes | Done |
+| ⬜ | **B.** Lower the per-user rate limit for AI Logic from 100 to 10 requests/minute | Google Cloud → IAM & Admin → Quotas & System Limits → Firebase AI Logic API → *Generate content requests per minute per project per user* (default) → ⋮ → Edit quota | To do |
 | ⬜ | **C.** Restrict the browser API key | Google Cloud → APIs & Services → Credentials → the browser key (auto-created by Firebase) | To do |
 
-For **C**:
-- Under **Application restrictions**, choose **Websites** and add `https://ragent-eec65.web.app/*` and
-  `https://ragent-eec65.firebaseapp.com/*`.
-- Under **API restrictions**, choose **Restrict key** and select the Firebase APIs the page uses: at least
-  **Firebase AI Logic API**, **Firebase App Check API** and **Firebase Installations API**.
+For **C** (key "Browser key (auto created by Firebase)"):
+- **API restrictions are already set.** Firebase limited the key to 25 Firebase APIs, including Firebase AI Logic API,
+  Firebase App Check API and Firebase Installations API. The Gemini API (Generative Language API) is **not** on it, so the
+  key can't call Gemini directly. Leave this list as it is.
+- **Application restrictions are missing (currently "None").** Choose **Websites** and add `https://ragent-eec65.web.app/*`
+  and `https://ragent-eec65.firebaseapp.com/*`, then **Save**. It can take up to 5 minutes to apply.
 
-Then test step 2 on the live site. If it fails with `API_KEY_SERVICE_BLOCKED`, the error names the API that's missing.
-Add it to the list.
+Then test step 2 on the live site. If requests fail with `API_KEY_HTTP_REFERRER_BLOCKED`, check the two website entries
+for typos.
 
 ## What's still possible (honest limits)
 

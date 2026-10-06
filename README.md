@@ -10,6 +10,9 @@ Every version is its own project folder. One website shows them all, with a left
 | 1 | [`projects/01-hello-world-rules`](projects/01-hello-world-rules) | Say Hello, get Hello World. One rule, no model |
 | 2 | [`projects/02-hello-world-llm`](projects/02-hello-world-llm) | Your message goes to a real model (Gemini via Firebase AI Logic) |
 
+**How it was built:** [docs/BUILD_AND_DEPLOY_GUIDE.md](docs/BUILD_AND_DEPLOY_GUIDE.md) walks through every step,
+from creating the Firebase project to deploying and hardening, with screenshots.
+
 ## How the repo works
 
 ```text
