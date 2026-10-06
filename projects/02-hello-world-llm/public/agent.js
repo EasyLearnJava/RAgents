@@ -44,7 +44,8 @@ export function createAgent(generate) {
 /**
  * Turns SDK/API errors into messages a user (and you, while learning) can act on.
  *
- * Recognised cases: App Check / permission (403), quota or rate limit (429), network failures.
+ * Recognised cases: App Check / permission (403), quota or rate limit (429), model busy (500/503),
+ * network failures.
  * Anything else is shown with its original text, shortened to 160 characters.
  *
  * @param {unknown} err The thrown error (or any value).
@@ -57,6 +58,9 @@ export function friendlyError(err) {
   }
   if (/RESOURCE_EXHAUSTED|\b429\b|quota|rate.?limit/i.test(msg)) {
     return "The free model quota is used up for now. Please try again in a minute.";
+  }
+  if (/high demand|overloaded|UNAVAILABLE|\b50[03]\b/i.test(msg)) {
+    return "The model is busy right now (high demand). Please try again in a moment.";
   }
   if (/failed to fetch|network|offline|ERR_/i.test(msg)) {
     return "Couldn't reach the model. Check your connection and try again.";

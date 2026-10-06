@@ -5,7 +5,7 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [
       {
-        "source": "/projects.json",
+        "source": "**/*.@(json|js|html)",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ]
