@@ -58,11 +58,21 @@
     <iframe id="frame" title="Selected project"></iframe>
   </main>
 <script type="module">
-  const nav = document.getElementById("nav");
-  const info = document.getElementById("info");
-  const frame = document.getElementById("frame");
+  /*
+   * The site shell: lists every project in the left nav and shows the selected one.
+   * The list comes from projects.json, which scripts/build.mjs generates from each
+   * projects/<folder>/project.json. The selected project is kept in the URL hash
+   * (e.g. #02-hello-world-llm), so links and the Back button work.
+   * All text is inserted with textContent, never innerHTML.
+   */
+  const nav = document.getElementById("nav");       // left nav: one link per project
+  const info = document.getElementById("info");     // header: title, summary, what you learn, next
+  const frame = document.getElementById("frame");   // the selected project's own page
+
+  /** Creates an element with an optional class and text. */
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 
+  // Load the project list. no-cache: always pick up newly deployed steps.
   let projects = [];
   try {
     projects = await (await fetch("projects.json", { cache: "no-cache" })).json();
@@ -70,6 +80,7 @@
     info.replaceChildren(el("p", "empty", "Couldn't load projects.json. Run `npm run build` first."));
   }
 
+  // One nav link per project: step number, title and badge.
   for (const p of projects) {
     const a = el("a"); a.href = "#" + p.folder; a.dataset.folder = p.folder;
     const text = el("div");
@@ -79,6 +90,10 @@
     nav.append(a);
   }
 
+  /**
+   * Shows the project named in the URL hash (or the first project when the hash is empty or unknown):
+   * highlights its nav link, fills the header from its project.json, and loads its page in the frame.
+   */
   function show() {
     const wanted = location.hash.slice(1);
     const p = projects.find((x) => x.folder === wanted) || projects[0];
@@ -91,7 +106,7 @@
     const open = el("a", "open", "Open this project on its own ↗"); open.href = p.path; open.target = "_blank"; open.rel = "noopener";
     parts.push(open);
     info.replaceChildren(...parts);
-    if (frame.getAttribute("src") !== p.path) frame.src = p.path;
+    if (frame.getAttribute("src") !== p.path) frame.src = p.path;   // reload only when the project changes
     document.title = `Step ${p.step} · ${p.title} · RAgents`;
   }
   window.addEventListener("hashchange", show);

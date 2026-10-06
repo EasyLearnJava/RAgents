@@ -1,4 +1,8 @@
-// Tests use a fake model, so they never call Gemini or need the network.
+/**
+ * Tests for step 2's agent logic (public/agent.js).
+ * They pass a fake `generate` function instead of Gemini, so they're fast, free and need no network.
+ * Run from the repo root with:  npm test
+ */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_CHARS, createAgent, friendlyError, setupProblem } from "../public/agent.js";

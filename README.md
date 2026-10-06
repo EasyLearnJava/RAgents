@@ -31,6 +31,26 @@ RAgents/
 The site lists projects from each `project.json`, sorted by `step`. Each project also works on its own at
 `/projects/<folder>/`.
 
+### `project.json` fields
+
+| Field | Required | Shown as |
+|---|---|---|
+| `step` | yes | The number in the left nav; also the sort order. Must be unique |
+| `title` | yes | The nav link and the header title |
+| `summary` | yes | One sentence under the title |
+| `badge` | no | Small label under the nav link, e.g. `No model`, `Gemini` |
+| `learn` | no | Bullet list "what you learn" in the header |
+| `next` | no | "Next: …", i.e. what's missing, which becomes the next step |
+
+`scripts/build.mjs` checks the required fields and fails the build (and so the deploy) if one is missing.
+
+### How a request flows
+
+- **Step 1:** browser → `agent.js` (one rule) → reply. Nothing leaves the browser.
+- **Step 2:** browser → `main.js` → Firebase App Check (proves the request comes from this site) →
+  Firebase AI Logic (holds the Gemini key) → Gemini → reply. `agent.js` checks the input first and turns
+  errors into readable messages.
+
 ## Everyday commands (run in the repo root)
 
 ```powershell

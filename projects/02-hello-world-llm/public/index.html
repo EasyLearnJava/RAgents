@@ -46,12 +46,17 @@
     </form>
   </main>
 <script type="module">
+  // Page wiring for step 2: connect once (startAgent), then send each message to the model.
   import { startAgent } from "./main.js";
-  const log = document.getElementById("log");
-  const input = document.getElementById("msg");
-  const send = document.getElementById("send");
-  const status = document.getElementById("status");
+  const log = document.getElementById("log");        // the scrolling message list
+  const input = document.getElementById("msg");      // the text box
+  const send = document.getElementById("send");      // disabled while a reply is on its way
+  const status = document.getElementById("status");  // header badge: model name, or "setup needed"
 
+  /**
+   * Appends one chat bubble and returns it (so the "thinking…" bubble can be removed later).
+   * `who` is "you" or "bot"; `extra` adds CSS classes such as "thinking".
+   */
   function add(text, who, extra = "") {
     const div = document.createElement("div");
     div.className = `msg ${who} ${extra}`.trim();
@@ -61,6 +66,7 @@
     return div;
   }
 
+  // Connect once when the page loads. If setup is incomplete, show what's missing in the chat.
   let agent;
   try {
     agent = await startAgent();
@@ -72,8 +78,9 @@
     add("Couldn't start the agent: " + (err?.message || err), "bot");
   }
 
+  // Send: show the message, block double-sends, show "thinking…" until the model replies.
   document.getElementById("form").addEventListener("submit", async (e) => {
-    e.preventDefault();
+    e.preventDefault();                // stay on the page instead of submitting the form
     if (!agent) return;
     const text = input.value;
     if (text.trim()) add(text, "you");

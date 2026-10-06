@@ -1,3 +1,7 @@
+/**
+ * Tests for step 1's rule-based agent (public/agent.js).
+ * Run from the repo root with:  npm test
+ */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { respond } from "../public/agent.js";
