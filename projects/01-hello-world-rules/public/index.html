@@ -50,12 +50,18 @@
     title: "What happens when you press Send",
     hint: "Everything runs inside your browser: no server, no model, no network. Slowed down so you can follow it.",
     lanes: [
-      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message" }] },
+      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message, press Send" }] },
       { label: "Your code · in your browser", nodes: [
-        { id: "page", title: "index.html", sub: "reads the text box" },
+        { id: "page", title: "index.html", sub: "reads the text box, calls respond()" },
         { id: "agent", title: "agent.js", sub: "empty? → hello|hi|hey? → fallback" },
       ] },
-      { label: "Reply", nodes: [{ id: "reply", title: "Chat bubble", sub: "the reply is shown" }] },
+    ],
+    response: [
+      { label: "Your code · in your browser", nodes: [
+        { id: "r-agent", title: "agent.js", sub: "returns the reply text" },
+        { id: "r-page", title: "index.html", sub: "adds the reply as a chat bubble" },
+      ] },
+      { label: "You", nodes: [{ id: "r-you", title: "You", sub: "read the reply" }] },
     ],
   });
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -73,8 +79,15 @@
     flow.set("agent", "active"); await pause(400); if (id !== run) return;
     flow.set("agent", "done", RULES[result.rule]);
     flow.log(`agent.js: ${RULES[result.rule]} (real time: ${ms < 0.1 ? "under 0.1" : ms.toFixed(2)} ms)`);
-    flow.set("reply", "done", `“${result.reply}”`);
-    flow.log(`Reply shown: “${result.reply}”`, "done");
+    // The way back: the same files, in reverse.
+    flow.set("r-agent", "active"); await pause(300); if (id !== run) return;
+    flow.set("r-agent", "done", `returned “${result.reply.slice(0, 40)}”`);
+    flow.log("agent.js returned the reply text to index.html");
+    flow.set("r-page", "active"); await pause(300); if (id !== run) return;
+    flow.set("r-page", "done", "bubble added");
+    flow.log("index.html added the reply bubble to the chat");
+    flow.set("r-you", "done", `“${result.reply.slice(0, 40)}”`);
+    flow.log(`You see: “${result.reply}”`, "done");
   }
 
   /** Appends one chat bubble. `who` is "you" (right, blue) or "bot" (left, orange). */

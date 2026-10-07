@@ -56,9 +56,10 @@
   const flow = createFlow(document.getElementById("flow"), {
     title: "What happens when you press Send",
     hint: "Your message leaves the browser for the first time. App Check, AI Logic and Gemini happen in one request: " +
-          "they light up in order while you wait, then each shows its real result.",
+          "they light up in order while you wait, then each shows its real result. The way back is drawn underneath, " +
+          "slowed down slightly so you can follow it.",
     lanes: [
-      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message" }] },
+      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message, press Send" }] },
       { label: "Your browser · your code", nodes: [
         { id: "agent", title: "agent.js", sub: "not empty? ≤ 500 characters?" },
         { id: "appcheck", title: "App Check", sub: "reCAPTCHA scores the visitor → single-use token" },
@@ -68,12 +69,24 @@
         { id: "gemini", title: `Gemini · ${MODEL}`, sub: "system instruction + your one message" },
       ] },
     ],
-    returnLabel: "⟵ the reply travels back: Gemini → AI Logic → your page → chat bubble",
+    response: [
+      { label: "Google Cloud", nodes: [
+        { id: "r-gemini", title: "Gemini", sub: "writes the reply (or returns an error)" },
+        { id: "r-ailogic", title: "Firebase AI Logic", sub: "sends the result back to your browser" },
+      ] },
+      { label: "Your browser · your code", nodes: [
+        { id: "r-sdk", title: "Firebase SDK", sub: "response.text() pulls out the reply" },
+        { id: "r-agent", title: "agent.js", sub: "trims it · errors → friendly message" },
+        { id: "r-page", title: "index.html", sub: "removes “thinking…”, adds the bubble" },
+      ] },
+      { label: "You", nodes: [{ id: "r-you", title: "You", sub: "read the reply" }] },
+    ],
   });
 
   // While the single request is in flight, light the boxes in order (the SDK doesn't report the phases).
   let timers = [];
   const stopTimers = () => { timers.forEach(clearTimeout); timers = []; };
+  const REQUEST = ["appcheck", "ailogic", "gemini"];
   const ERRORS = {
     appcheck: { at: ["appcheck", "ailogic"], note: "rejected (403)", why: "AI Logic refused the request: App Check token missing or invalid" },
     network: { at: ["ailogic"], note: "not reached", why: "the request never reached Google (network/offline)" },
@@ -81,13 +94,15 @@
     busy: { at: ["gemini"], note: "busy (500/503)", why: "Gemini is overloaded right now" },
     other: { at: ["gemini"], note: "error", why: "the model call failed" },
   };
+  let outcome = null;          // what happened on the way there; decides how the way back is drawn
 
-  /** Turns each agent.js event into box states and trace lines. */
+  /** Request row: turns each agent.js event into box states and trace lines. */
   function onEvent(e) {
+    outcome = e;
     if (e.type === "rejected") {
       const why = e.reason === "empty" ? "nothing typed" : "longer than 500 characters";
       flow.set("agent", "error", why);
-      ["appcheck", "ailogic", "gemini"].forEach((id) => flow.set(id, "skip"));
+      REQUEST.forEach((id) => flow.set(id, "skip"));
       flow.log(`agent.js stopped it: ${why}. No request was sent (no quota used).`, "error");
     } else if (e.type === "accepted") {
       flow.set("agent", "done", `${e.chars} characters, OK`);
@@ -97,29 +112,72 @@
       flow.log("Firebase SDK: getting a single-use App Check token and sending the request…");
       timers.push(setTimeout(() => flow.set("ailogic", "active"), 250));
       timers.push(setTimeout(() => flow.set("gemini", "active"), 500));
-    } else if (e.type === "model-ok") {
+    } else if (e.type === "model-ok" || e.type === "model-empty") {
       stopTimers();
       flow.set("appcheck", "done", "token accepted");
       flow.set("ailogic", "done", "key added, forwarded");
-      flow.set("gemini", "done", `${e.ms} ms · ${e.chars} characters`);
-      flow.set("return", "done");
-      flow.log(`Gemini replied in ${e.ms} ms. It saw only the system instruction and this one message (no history yet).`, "done");
-    } else if (e.type === "model-empty") {
-      stopTimers();
-      flow.set("appcheck", "done"); flow.set("ailogic", "done");
-      flow.set("gemini", "error", "empty reply");
-      flow.set("return", "error");
-      flow.log("Gemini answered with an empty reply.", "error");
+      flow.set("gemini", "done", `answered in ${e.ms} ms`);
+      flow.log(`Request reached Gemini; it answered in ${e.ms} ms. It saw only the system instruction and this one message (no history yet).`);
     } else if (e.type === "model-error") {
       stopTimers();
       const err = ERRORS[e.kind] || ERRORS.other;
-      for (const id of ["appcheck", "ailogic", "gemini"]) {
+      for (const id of REQUEST) {
         if (err.at.includes(id)) flow.set(id, "error", err.note);
-        else if (["appcheck", "ailogic", "gemini"].indexOf(id) < ["appcheck", "ailogic", "gemini"].indexOf(err.at[0])) flow.set(id, "done");
+        else if (REQUEST.indexOf(id) < REQUEST.indexOf(err.at[0])) flow.set(id, "done");
         else flow.set(id, "skip");
       }
-      flow.set("return", "error");
       flow.log(`Failed after ${e.ms} ms: ${err.why}.`, "error");
+    }
+  }
+
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  let run = 0;                 // a newer message cancels an older animation
+
+  /**
+   * Response row: replays the way back, one box at a time, from what actually happened (`outcome`).
+   * Errors travel back too: Google returns an error status and agent.js turns it into a friendly message.
+   */
+  async function animateResponse(reply, id) {
+    const o = outcome || {};
+    const short = `“${reply.slice(0, 40)}${reply.length > 40 ? "…" : ""}”`;
+    const err = o.type === "model-error" ? (ERRORS[o.kind] || ERRORS.other) : null;
+    const code = { appcheck: "403", quota: "429", busy: "500/503" }[o.kind] || "error";
+    // [box, state, note, trace line] for each hop on the way back, in order.
+    let steps;
+    if (o.type === "rejected") {
+      steps = [["r-gemini", "skip"], ["r-ailogic", "skip"], ["r-sdk", "skip"],
+        ["r-agent", "done", "returned a hint", "agent.js returned a hint straight away (nothing was sent)"]];
+    } else if (o.type === "model-ok") {
+      steps = [["r-gemini", "done", `${o.chars} characters`, `Gemini wrote a ${o.chars}-character reply`],
+        ["r-ailogic", "done", "200 OK", "Firebase AI Logic sent it back to the browser"],
+        ["r-sdk", "done", "text extracted", "Firebase SDK: response.text() pulled out the reply text"],
+        ["r-agent", "done", "trimmed, not empty", "agent.js trimmed it and checked it isn't empty"]];
+    } else if (o.type === "model-empty") {
+      steps = [["r-gemini", "error", "empty reply", "Gemini returned an empty reply"],
+        ["r-ailogic", "done", "200 OK", "Firebase AI Logic sent it back"],
+        ["r-sdk", "done", "empty text", "Firebase SDK: the text was empty"],
+        ["r-agent", "done", "→ “try again” message", "agent.js replaced it with a “please try again” message"]];
+    } else if (err && o.kind === "network") {
+      steps = [["r-gemini", "skip"], ["r-ailogic", "skip"],
+        ["r-sdk", "error", "network error", "Firebase SDK threw a network error (nothing came back)"],
+        ["r-agent", "done", "→ friendly message", "agent.js turned the error into a friendly message"]];
+    } else if (err) {
+      steps = [
+        o.kind === "appcheck" ? ["r-gemini", "skip"] : ["r-gemini", "error", err.note, `Gemini returned an error: ${err.note}`],
+        ["r-ailogic", "error", `${code} sent back`, `Firebase AI Logic sent back an error (${code})`],
+        ["r-sdk", "error", "threw an error", "Firebase SDK threw it as an error"],
+        ["r-agent", "done", "→ friendly message", "agent.js caught it and turned it into a friendly message"]];
+    } else {                   // setup incomplete: the agent answered with the setup message, nothing was sent
+      steps = [["r-gemini", "skip"], ["r-ailogic", "skip"], ["r-sdk", "skip"],
+        ["r-agent", "done", "returned the setup message", "agent.js returned the setup message (nothing was sent)"]];
+    }
+    steps.push(["r-page", "done", "bubble added", "index.html removed “thinking…” and added the reply bubble"]);
+    steps.push(["r-you", "done", short, `You see: ${short}`]);
+    for (const [box, state, note, line] of steps) {
+      if (state === "skip") { flow.set(box, "skip"); continue; }
+      flow.set(box, "active"); await pause(220); if (id !== run) return;
+      flow.set(box, state, note);
+      if (line) flow.log(line, box === "r-you" ? "done" : state === "error" ? "error" : undefined);
     }
   }
   const log = document.getElementById("log");        // the scrolling message list
@@ -164,9 +222,16 @@
     const text = input.value;
     if (text.trim()) add(text, "you");
     stopTimers();
+    const id = ++run;
+    outcome = null;
     flow.start();
     flow.set("you", "done", text.trim() ? `“${text.trim().slice(0, 30)}”` : "(empty)");
     flow.log(`You typed “${text.trim()}”`);
+    if (!agent.ready) {
+      flow.set("agent", "error", "setup needed");
+      REQUEST.forEach((box) => flow.set(box, "skip"));
+      flow.log("Setup isn't finished, so no request was sent.", "error");
+    }
     input.value = "";
     send.disabled = true;
     const thinking = add("thinking…", "bot", "thinking");
@@ -175,6 +240,7 @@
     add(reply, "bot");
     send.disabled = false;
     input.focus();
+    animateResponse(reply, id);
   });
 </script>
 </body>

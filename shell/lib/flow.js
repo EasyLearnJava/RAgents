@@ -41,6 +41,10 @@ const CSS = `
 .fl-arrow.lit { color: var(--you, #4f7bc0); }
 .fl-gap { flex: none; align-self: center; font-weight: 900; font-size: 1.3rem; color: var(--muted, #65543f); }
 .fl-gap.lit { color: var(--you, #4f7bc0); }
+.fl-dir { margin: 4px 0 6px; font-size: .72rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: var(--you, #4f7bc0); }
+.fl-dir-back { margin-top: 16px; text-align: right; color: var(--bot, #c8683e); }
+.fl-back, .fl-back .fl-row { flex-direction: row-reverse; }
+.fl-back .fl-arrow.lit, .fl-back .fl-gap.lit { color: var(--bot, #c8683e); }
 .fl-return { margin-top: 10px; border: 2px dashed var(--muted, #65543f); border-radius: 12px; padding: 5px 12px; font-size: .8rem; font-weight: 700;
              color: var(--muted, #65543f); text-align: center; transition: background .25s, color .25s; }
 .fl-return.done { color: var(--ink, #241b15); background: color-mix(in srgb, var(--ok, #5c8d55) 20%, transparent); border-style: solid; }
@@ -53,10 +57,12 @@ const CSS = `
 @keyframes fl-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--you, #4f7bc0) 45%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .fl-node.active { animation: none; } }
 @media (max-width: 720px) {
-  .fl-lanes, .fl-row { flex-direction: column; }
+  .fl-lanes, .fl-row, .fl-back, .fl-back .fl-row { flex-direction: column; }
   .fl-lane { flex: none; }
   .fl-node { align-self: stretch; }
   .fl-arrow, .fl-gap { transform: rotate(90deg); align-self: center; }
+  .fl-back .fl-arrow, .fl-back .fl-gap { transform: rotate(-90deg); }
+  .fl-dir-back { text-align: left; }
 }`;
 
 /** Creates an element with an optional class and text. */
@@ -71,44 +77,59 @@ function el(tag, cls, text) {
  * Renders the diagram into `container` and returns the controls the page uses to animate it.
  *
  * @param {HTMLElement} container Where to draw (its content is replaced).
- * @param {{title: string, hint?: string, lanes: Array<{label: string, nodes: Array<{id: string, title: string, sub?: string}>}>,
- *          returnLabel?: string}} spec  Lanes are drawn left to right, nodes left to right inside a lane.
- *   `returnLabel` adds a strip under the lanes for the reply's way back.
+ * @param {{title: string, hint?: string,
+ *          lanes: Array<{label: string, nodes: Array<{id: string, title: string, sub?: string}>}>,
+ *          response?: Array<{label: string, nodes: Array<{id: string, title: string, sub?: string}>}>,
+ *          returnLabel?: string}} spec
+ *   `lanes`: the request, drawn left to right. `response`: the reply's way back, drawn as a second row
+ *   right to left (list it in the order it happens: first lane/node = where the reply starts).
+ *   `returnLabel`: a simple one-line strip instead of a response row. Node ids must be unique across both rows.
  */
 export function createFlow(container, spec) {
   if (!document.getElementById("fl-style")) {
     const style = el("style"); style.id = "fl-style"; style.textContent = CSS; document.head.append(style);
   }
   const nodes = new Map();      // id -> {box, note, arrowIn}
-  const gaps = [];              // arrows between lanes, lit as the request crosses them
+  const gaps = [];              // arrows between lanes, lit as the message crosses them
   const root = el("section", "fl");
   root.setAttribute("aria-label", spec.title);
   root.append(el("h2", "", spec.title));
   if (spec.hint) root.append(el("p", "fl-hint", spec.hint));
 
-  const lanes = el("div", "fl-lanes");
-  spec.lanes.forEach((lane, li) => {
-    if (li > 0) { const g = el("div", "fl-gap", "→"); g.dataset.before = lane.nodes[0].id; gaps.push(g); lanes.append(g); }
-    const box = el("div", "fl-lane"); box.style.setProperty("--n", lane.nodes.length);
-    box.append(el("b", "", lane.label));
-    const row = el("div", "fl-row");
-    lane.nodes.forEach((n, ni) => {
-      let arrowIn = null;
-      if (ni > 0) { arrowIn = el("div", "fl-arrow", "→"); row.append(arrowIn); }
-      const card = el("div", "fl-node");
-      card.append(el("div", "t", n.title));
-      if (n.sub) card.append(el("div", "s", n.sub));
-      const note = el("div", "n");
-      card.append(note);
-      row.append(card);
-      nodes.set(n.id, { box: card, note, arrowIn });
+  /** Draws one row of lanes. `back` = the response row: same order in the DOM, shown right to left. */
+  function drawRow(laneSpecs, back) {
+    const arrow = back ? "←" : "→";
+    const lanes = el("div", back ? "fl-lanes fl-back" : "fl-lanes");
+    laneSpecs.forEach((lane, li) => {
+      if (li > 0) { const g = el("div", "fl-gap", arrow); g.dataset.before = lane.nodes[0].id; gaps.push(g); lanes.append(g); }
+      const box = el("div", "fl-lane"); box.style.setProperty("--n", lane.nodes.length);
+      box.append(el("b", "", lane.label));
+      const row = el("div", "fl-row");
+      lane.nodes.forEach((n, ni) => {
+        let arrowIn = null;
+        if (ni > 0) { arrowIn = el("div", "fl-arrow", arrow); row.append(arrowIn); }
+        const card = el("div", "fl-node");
+        card.append(el("div", "t", n.title));
+        if (n.sub) card.append(el("div", "s", n.sub));
+        const note = el("div", "n");
+        card.append(note);
+        row.append(card);
+        nodes.set(n.id, { box: card, note, arrowIn });
+      });
+      box.append(row);
+      lanes.append(box);
     });
-    box.append(row);
-    lanes.append(box);
-  });
-  root.append(lanes);
+    return lanes;
+  }
 
-  const back = spec.returnLabel ? el("div", "fl-return", spec.returnLabel) : null;
+  if (spec.response) root.append(el("div", "fl-dir", "Request →"));
+  root.append(drawRow(spec.lanes, false));
+  if (spec.response) {
+    root.append(el("div", "fl-dir fl-dir-back", "← Response"));
+    root.append(drawRow(spec.response, true));
+  }
+
+  const back = spec.returnLabel && !spec.response ? el("div", "fl-return", spec.returnLabel) : null;
   if (back) root.append(back);
   const trace = el("ol", "fl-trace");
   trace.setAttribute("aria-live", "polite");
