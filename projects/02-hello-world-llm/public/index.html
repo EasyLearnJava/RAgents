@@ -41,7 +41,8 @@
     </header>
     <div id="log" aria-live="polite"></div>
     <form id="form">
-      <input id="msg" autocomplete="off" placeholder="Say Hello, or ask anything…" aria-label="Your message" maxlength="500" autofocus>
+      <!-- 550 on purpose: agent.js accepts up to 500 (MAX_CHARS), so you can watch its check reject a longer message. -->
+      <input id="msg" autocomplete="off" placeholder="Say Hello, or ask anything…" aria-label="Your message" maxlength="550" autofocus>
       <button id="send" type="submit">Send</button>
     </form>
   </main>
