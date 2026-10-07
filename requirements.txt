@@ -1,2 +1,5 @@
-# Python packages Vercel installs for api/index.py: the same pinned list step 4's backend uses.
--r projects/04-hello-world-python/backend/requirements.txt
+# Python packages Vercel installs for api/index.py.
+# Keep these the same as projects/04-hello-world-python/backend/requirements.txt (Vercel can't follow "-r" includes).
+fastapi==0.142.2
+uvicorn==0.54.0
+langchain-core==1.6.7
