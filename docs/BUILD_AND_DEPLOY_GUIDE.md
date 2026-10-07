@@ -239,7 +239,7 @@ firebase deploy --only hosting
 
 Open https://ragent-eec65.web.app/#02-hello-world-llm. If it still says **"Setup needed"** right after a deploy,
 the browser is using old cached files. Press **Ctrl+Shift+R** to reload without the cache.
-`firebase.json` now sends `Cache-Control: no-cache` for `.js`, `.html` and `.json` files, so this shouldn't happen again.
+`firebase.json` now sends `Cache-Control: no-cache` for every file (including pages opened by folder address, like `/projects/02-hello-world-llm/`), so this shouldn't happen again.
 
 ![Stale cache after deploy](images/13-step2-stale-cache.jpg)
 

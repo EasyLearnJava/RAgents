@@ -114,7 +114,7 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 ### 12. Old code stays in browsers after a fix is deployed
 - **Risk:** Hosting let browsers keep `.js` files for an hour, so a security or config fix wouldn't reach visitors right
   away. (This is what made the "add your site key" message stick after the key was deployed.)
-- **How we solved it:** `firebase.json` sends `Cache-Control: no-cache` for `.js`, `.html` and `.json`. Browsers check for a
+- **How we solved it:** `firebase.json` sends `Cache-Control: no-cache` for every file (`"source": "**"`). Browsers check for a
   newer version on every load.
 
 ### 13. Secrets or logs committed to git by accident
