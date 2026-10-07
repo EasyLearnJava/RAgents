@@ -51,12 +51,18 @@ After the first time, only the last line is needed (from the `backend` folder).
 npm run serve
 ```
 Open http://127.0.0.1:5000/#04-hello-world-python. The local site server forwards `/api/*` to the backend on
-port 8000, the same way Firebase Hosting will forward `/api/*` to Cloud Run. The badge shows the Python and
+port 8000, the same way Vercel forwards `/api/*` to the Python function on the live site. The badge shows the Python and
 langchain-core versions when the backend is running. If the backend isn't running, the chat says so.
 
 Things to try: `hi there`, `weather?`, an empty message, and more than 1000 characters (the server answers 422).
 
-## Put it on the live site (needs billing)
+## Live on Vercel (no billing needed)
+
+Step 4 runs at https://ragents-eight.vercel.app/#04-hello-world-python. Vercel runs this same backend as a Python
+function: `vercel.json` sends `/api/*` to `api/index.py` (repo root), which loads `backend/main.py`. Packages come from
+the root `requirements.txt`, so keep it the same as `backend/requirements.txt`. Every `git push` to `main` redeploys it.
+
+## Alternative: Cloud Run behind Firebase Hosting (needs billing)
 
 On https://ragent-eec65.web.app, step 4 says *"The Python backend isn't deployed on this site yet"* until these steps
 are done. Cloud Run needs the **Blaze** plan (billing on). It has a monthly free tier that a project like this normally
