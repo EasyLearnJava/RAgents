@@ -15,8 +15,8 @@ import { FIREBASE_CONFIG, MODEL, RECAPTCHA_SITE_KEY } from "./ai-config.js";
 import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
 
 /**
- * Finds the Firebase web config: FIREBASE_CONFIG from ai-config.js if set (needed on Vercel and locally),
- * otherwise the config Firebase Hosting publishes for this project at /__/firebase/init.json.
+ * Finds the Firebase web config: FIREBASE_CONFIG from ai-config.js if set, otherwise
+ * /__/firebase/init.json (served by Firebase Hosting; forwarded there on Vercel and by the local server).
  *
  * @returns {Promise<object|null>} The config object, or null when neither source is available.
  */

@@ -35,8 +35,8 @@ copied code, spam, replayed tokens, surprise bills, XSS from model replies…), 
 ## One-time setup in the Firebase console (project RAgent, `ragent-eec65`)
 
 1. **Register a web app:** Project Overview → **Add app** → **Web** (`</>`) → nickname `ragents-web` → **Register app**.
-   Its `firebaseConfig` values are in `FIREBASE_CONFIG` in `public/ai-config.js` (public, not secret). Firebase Hosting
-   also serves them at `/__/firebase/init.json`, but Vercel and local testing don't, so the page uses `ai-config.js`.
+   You don't need to copy the config snippet: the page loads it at runtime from `/__/firebase/init.json`, which
+   Firebase Hosting serves (Vercel and the local server forward that request to the Firebase site).
 2. **Turn on AI Logic:** **AI services → AI Logic → Get started** → choose **Gemini Developer API** (works on the free Spark plan) → follow the guided setup.
 3. **Set up App Check:** the guided setup (or **Security → App Check → Apps**) asks for a **reCAPTCHA Enterprise** site key for your web app.
    Create one in Google Cloud console → **Security → reCAPTCHA** → **Create key**, type **Website**, domains
@@ -49,14 +49,15 @@ copied code, spam, replayed tokens, surprise bills, XSS from model replies…), 
 
 ## Testing on your own machine (optional)
 
-1. `FIREBASE_CONFIG` in `public/ai-config.js` is already filled in (Project settings → General → Your apps).
+1. Nothing to paste: the local server fetches the config from the Firebase site (set `NODE_OPTIONS=--use-system-ca` behind Zscaler).
 2. Run `npm run serve` from the repo root and open http://127.0.0.1:5000.
 3. On `127.0.0.1` the page uses an App Check **debug token**: open the browser console (F12), copy the token it prints,
    and add it under **Security → App Check → Apps → ⋮ → Manage debug tokens**. Never share that token.
 
 ## On Vercel (https://ragents-eight.vercel.app)
 
-The Firebase SDK runs in the browser, so step 2 works on any domain App Check allows. For Vercel that means
+The Firebase SDK runs in the browser, so step 2 works on any domain App Check allows. `vercel.json` forwards
+`/__/firebase/init.json` to the Firebase site, so the config stays out of the code. For Vercel that also means
 the production domain `ragents-eight.vercel.app` is in the reCAPTCHA key's domain list (and, once the API key has
 a Websites restriction, `https://ragents-eight.vercel.app/*` there too). Preview URLs change on every deploy and
 aren't allowed, so step 2 shows an App Check error on previews; that's expected.

@@ -7,6 +7,9 @@
  * - Serves folder URLs as their index.html and refuses paths that escape dist/ (e.g. "/../").
  * - Forwards /api/* to a Python backend on http://127.0.0.1:8000 (step 4 onwards), the same way Firebase
  *   Hosting forwards /api/* to Cloud Run on the live site. Start that backend separately (see step 4's README).
+ * - Fetches /__/firebase/init.json (step 2's public Firebase config) from the Firebase site, like vercel.json
+ *   does on Vercel, so the config never has to be pasted into the code. Behind Zscaler, set
+ *   NODE_OPTIONS=--use-system-ca first.
  *
  * Usage:  npm run serve                 build, then serve on http://127.0.0.1:5000
  *         node scripts/serve.mjs 5050   serve an existing dist/ on another port
@@ -44,9 +47,23 @@ function proxyApi(req, res) {
   req.pipe(upstream);
 }
 
+/** Where step 2's Firebase web config is published (Firebase Hosting serves it for every project). */
+const FIREBASE_INIT = "https://ragent-eec65.web.app/__/firebase/init.json";
+
+/** Returns the Firebase config from the live site (or a 502 the page turns into a "setup needed" message). */
+async function proxyFirebaseInit(res) {
+  try {
+    const up = await fetch(FIREBASE_INIT);
+    res.writeHead(up.status, { "Content-Type": "application/json", "Cache-Control": "no-cache" }).end(await up.text());
+  } catch (err) {
+    res.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify({ error: `Couldn't fetch ${FIREBASE_INIT}: ${err.cause?.code || err.message}` }));
+  }
+}
+
 // One handler for every request: /api/* goes to the backend; everything else maps to a file inside dist/.
 createServer((req, res) => {
   if (req.url.startsWith("/api/")) { proxyApi(req, res); return; }
+  if (req.url === "/__/firebase/init.json") { proxyFirebaseInit(res); return; }
   const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
   let file = normalize(join(DIST, urlPath));
   if (!file.startsWith(DIST)) { res.writeHead(403).end("Forbidden"); return; }   // no ../ escapes

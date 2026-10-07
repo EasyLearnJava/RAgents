@@ -31,7 +31,7 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 | Value | Where it lives | Secret? | Why it's safe to publish |
 |---|---|---|---|
 | reCAPTCHA site key `6LdVR…` | `public/ai-config.js` | No | Designed to be public. Only works on the domains listed on the key |
-| Firebase web config (`apiKey`, `projectId`, `appId`…) | In `public/ai-config.js` (also served by Firebase Hosting at `/__/firebase/init.json`) | No | It names the project, it doesn't unlock it. Access is controlled by App Check and API-key restrictions |
+| Firebase web config (`apiKey`, `projectId`, `appId`…) | Served by Hosting at `/__/firebase/init.json` (not in the code; Vercel and the local server forward to it) | No | It names the project, it doesn't unlock it. Access is controlled by App Check and API-key restrictions |
 | Model name | `public/ai-config.js` | No | Just a label |
 | **Gemini API key** | **Firebase AI Logic, on Google's side** | **Yes** | **Never in the code, the repo or the browser** |
 | reCAPTCHA *secret* key | Google Cloud only | Yes | Never copied anywhere; App Check uses it server-side |

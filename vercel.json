@@ -10,6 +10,7 @@
     }
   },
   "rewrites": [
+    { "source": "/__/firebase/init.json", "destination": "https://ragent-eec65.web.app/__/firebase/init.json" },
     { "source": "/api/(.*)", "destination": "/api/index" }
   ]
 }

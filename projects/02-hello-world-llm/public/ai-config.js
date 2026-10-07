@@ -8,14 +8,7 @@ export const MODEL = "gemini-3.5-flash-lite";
 // App Check site key (reCAPTCHA Enterprise). AI Logic rejects calls without App Check.
 export const RECAPTCHA_SITE_KEY = "6LdVR-ItAAAAAGUxQK14RltxPK5uCA1caxO6peEG";
 
-// The web app's firebaseConfig (Firebase console → Project settings → Your apps → ragents-web).
-// Needed off Firebase Hosting (Vercel, local testing), where /__/firebase/init.json doesn't exist.
-// These are the same public values Firebase Hosting serves to every visitor at /__/firebase/init.json.
-export const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBQ6LR0D3yrrcxoAOrsbBp0HRhCjYjuCXU",
-  authDomain: "ragent-eec65.firebaseapp.com",
-  projectId: "ragent-eec65",
-  storageBucket: "ragent-eec65.firebasestorage.app",
-  messagingSenderId: "867411437292",
-  appId: "1:867411437292:web:9420a2a2881532129b67c9",
-};
+// Leave null: the page loads the config from /__/firebase/init.json at runtime, so it isn't in the code.
+// Firebase Hosting serves that file itself; on Vercel (vercel.json) and locally (scripts/serve.mjs)
+// the request is forwarded to the Firebase site.
+export const FIREBASE_CONFIG = null;
