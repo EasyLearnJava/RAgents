@@ -8,5 +8,8 @@
     "serve": "node scripts/build.mjs && node scripts/serve.mjs",
     "test": "node --test",
     "deploy": "firebase deploy --only hosting"
+  },
+  "dependencies": {
+    "@langchain/core": "1.2.17"
   }
 }

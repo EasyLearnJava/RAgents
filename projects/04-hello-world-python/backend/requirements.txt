@@ -1,0 +1,4 @@
+# What the step 4 server needs to run (pinned so local, tests and Cloud Run use the same versions).
+fastapi==0.142.2
+uvicorn==0.54.0
+langchain-core==1.6.7

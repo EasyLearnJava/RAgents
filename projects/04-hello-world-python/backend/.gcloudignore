@@ -1,0 +1,8 @@
+# Files NOT uploaded when deploying with `gcloud run deploy --source .`
+.venv/
+__pycache__/
+.pytest_cache/
+tests/
+requirements-dev.txt
+pytest.ini
+.gcloudignore

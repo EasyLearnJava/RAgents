@@ -1,0 +1,12 @@
+{
+  "step": 3,
+  "title": "Hello World (LangChain)",
+  "badge": "LangChain · no model",
+  "summary": "Step 1 again, same rules and same replies, rebuilt as a LangChain chain: a RunnableLambda to clean the input, then a RunnableBranch to pick the rule.",
+  "learn": [
+    "LangChain's core idea: small Runnables joined with .pipe() into a chain you call with .invoke()",
+    "RunnableBranch: if/else as a chain step (is empty? → is greeting? → fallback)",
+    "streamEvents(): LangChain reports every step as it runs, which drives the diagram below"
+  ],
+  "next": "Step 4 runs this same chain in Python on a server (FastAPI), the setup every later agent step builds on."
+}

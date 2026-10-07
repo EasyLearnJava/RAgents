@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 4 · Hello World (Python backend)</title>
+<style>
+  :root { --bg:#f6eedd; --card:#fbf6eb; --ink:#241b15; --muted:#65543f; --you:#4f7bc0; --bot:#c8683e; --ok:#5c8d55; --warn:#b14d44; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; --ok:#578a50; --warn:#a9493f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px;
+         background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  .chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
+          border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
+  header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem;
+           display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
+  #status { font-size: .78rem; font-weight: 800; color: #fff8ec; background: var(--muted); border: 2px solid var(--ink);
+            border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
+  #status.ok { background: var(--ok); } #status.warn { background: var(--warn); }
+  #log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 80%; padding: 8px 14px; border: 2.5px solid var(--ink); border-radius: 16px; color: #fff8ec; white-space: pre-wrap; }
+  .you { align-self: flex-end; background: var(--you); }
+  .bot { align-self: flex-start; background: var(--bot); }
+  .thinking { opacity: .7; font-style: italic; }
+  form { display: flex; gap: 8px; padding: 12px; border-top: 3px solid var(--ink); }
+  input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+          border: 2.5px solid var(--ink); border-radius: 999px; padding: 8px 14px; }
+  button { font: inherit; font-weight: 800; border: 2.5px solid var(--ink); border-radius: 12px;
+           background: var(--bot); color: #fff8ec; padding: 8px 16px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+</style>
+</head>
+<body>
+  <main class="chat">
+    <header>
+      <div>Hello World Agent <small>Step 4 · the LangChain chain, in Python, on a server.</small></div>
+      <span id="status">checking backend…</span>
+    </header>
+    <div id="log" aria-live="polite"></div>
+    <form id="form">
+      <!-- 1100 on purpose: the server accepts up to 1000 (MAX_CHARS in main.py), so you can watch it reject a longer message. -->
+      <input id="msg" autocomplete="off" placeholder="Say Hello…" aria-label="Your message" maxlength="1100" autofocus>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </main>
+  <div id="flow" style="width:100%"></div>
+<script type="module">
+  // Page wiring for step 4: send each message to the Python backend (/api/step4/chat), show the reply,
+  // and replay the server's LangChain events in the diagram.
+  import { createFlow } from "/lib/flow.js";
+  const log = document.getElementById("log");        // the scrolling message list
+  const input = document.getElementById("msg");      // the text box
+  const send = document.getElementById("send");      // disabled while a reply is on its way
+  const status = document.getElementById("status");  // header badge: backend ready / not running
+
+  const flow = createFlow(document.getElementById("flow"), {
+    title: "What happens when you press Send",
+    hint: "Your message travels to a Python server, LangChain runs there, and the reply comes back as JSON with the " +
+          "server's own event trace. The steps are replayed slowly; the trace shows the real server-side times.",
+    lanes: [
+      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message, press Send" }] },
+      { label: "Your browser", nodes: [{ id: "page", title: "index.html", sub: "fetch POST /api/step4/chat" }] },
+      { label: "Your server · Python", nodes: [
+        { id: "api", title: "FastAPI", sub: "main.py · checks ≤ 1000 characters" },
+        { id: "normalize", title: "normalize", sub: "RunnableLambda: trim the text" },
+        { id: "rules", title: "rules", sub: "RunnableBranch: is empty? → is greeting? → fallback" },
+      ] },
+    ],
+    response: [
+      { label: "Your server · Python", nodes: [
+        { id: "r-rules", title: "rules", sub: "the chosen branch returns {reply, rule}" },
+        { id: "r-api", title: "FastAPI", sub: "sends JSON: reply + events" },
+      ] },
+      { label: "Your browser", nodes: [{ id: "r-page", title: "index.html", sub: "adds the reply as a chat bubble" }] },
+      { label: "You", nodes: [{ id: "r-you", title: "You", sub: "read the reply" }] },
+    ],
+  });
+
+  /**
+   * Appends one chat bubble and returns it (so the "thinking…" bubble can be removed).
+   * `who` is "you" or "bot"; `extra` adds CSS classes such as "thinking".
+   */
+  function add(text, who, extra = "") {
+    const div = document.createElement("div");
+    div.className = `msg ${who} ${extra}`.trim();
+    div.textContent = text;            // textContent, never innerHTML
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  /** Calls the backend; returns {ok, status, data} and never throws (network errors become ok: false). */
+  async function api(path, body) {
+    try {
+      const res = await fetch(path, body === undefined ? {} :
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = (res.headers.get("content-type") || "").includes("json") ? await res.json() : null;
+      return { ok: res.ok && data !== null, status: res.status, data };
+    } catch (err) {
+      return { ok: false, status: 0, data: { error: String(err?.message || err) } };
+    }
+  }
+
+  /** Why the backend couldn't answer, in words, from the HTTP status. */
+  function whyFailed({ status, data }) {
+    if (status === 422) return "The server rejected it: messages can be at most 1000 characters.";
+    if (status === 502) return data?.error || "The Python backend isn't running on this machine (see step 4's README).";
+    if (status === 404 || data === null) return "The Python backend isn't deployed on this site yet. Run step 4 locally (see its README).";
+    if (status === 0) return "Couldn't reach the server. Check your connection.";
+    return `The server returned an error (${status}).`;
+  }
+
+  // On load: is the backend there? Show its versions, or why it isn't.
+  const health = await api("/api/step4/health");
+  if (health.ok) {
+    status.textContent = `Python ${health.data.python} · langchain-core ${health.data.langchain_core}`;
+    status.className = "ok";
+  } else {
+    status.textContent = "backend not available"; status.className = "warn";
+    add(whyFailed(health), "bot");
+  }
+
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  let run = 0;                         // a newer message cancels an older replay
+  const short = (v) => (v && typeof v === "object" && "reply" in v ? `{reply: “${v.reply}”, rule: ${v.rule}}` : JSON.stringify(v));
+
+  /** Replays one round trip: the request, the server's LangChain events, then the way back. */
+  async function replay(text, res, totalMs, id) {
+    flow.start();
+    flow.set("you", "done", text.trim() ? `“${text.trim().slice(0, 30)}”` : "(empty)");
+    flow.log(`You typed “${text.trim().slice(0, 80)}”`);
+    flow.set("page", "done", "POST sent");
+    flow.log(`index.html sent POST /api/step4/chat; the full round trip took ${totalMs.toFixed(0)} ms`);
+    await pause(200); if (id !== run) return;
+    if (!res.ok) {
+      flow.set("api", "error", res.status === 422 ? "rejected (422)" : "not reachable");
+      for (const box of ["normalize", "rules", "r-rules", "r-api"]) flow.set(box, "skip");
+      flow.log(whyFailed(res), "error");
+      flow.set("r-page", "done", "error shown"); flow.set("r-you", "done", "the error message");
+      return;
+    }
+    const { events, server_ms } = res.data;
+    flow.set("api", "done", "accepted, ran the chain");
+    flow.log(`FastAPI accepted it and ran the chain: ${server_ms} ms on the server, ${(totalMs - server_ms).toFixed(0)} ms on the network`);
+    const checks = [];
+    for (const e of events) {
+      await pause(170); if (id !== run) return;
+      const when = `${e.ms} ms`;
+      if (e.event === "on_chain_start") {
+        if (e.name === "normalize" || e.name === "rules") flow.set(e.name, "active");
+        flow.log(`[server ${when}] on_chain_start · ${e.name}`);
+        continue;
+      }
+      flow.log(`[server ${when}] on_chain_end · ${e.name} → ${short(e.output)}`);
+      if (e.name === "normalize") flow.set("normalize", "done", `“${e.output}”`);
+      if (e.name.endsWith("?")) { checks.push(`${e.name} ${e.output ? "yes" : "no"}`); flow.set("rules", "active", checks.join(" · ")); }
+      if (e.name.startsWith("reply:")) flow.set("rules", "done", `${checks.join(" · ")}${checks.length ? " → " : ""}${e.name}`);
+      if (e.name === "rules") flow.set("r-rules", "done", `rule: ${e.output.rule}`);
+    }
+    await pause(170); if (id !== run) return;
+    flow.set("r-api", "done", "JSON sent back");
+    flow.log("FastAPI sent back JSON: the reply plus these events");
+    await pause(170); if (id !== run) return;
+    flow.set("r-page", "done", "bubble added");
+    flow.log("index.html added the reply bubble");
+    flow.set("r-you", "done", `“${res.data.reply}”`);
+    flow.log(`You see: “${res.data.reply}”`, "done");
+  }
+
+  // Send: show the message, call the backend, show the reply (or why it failed), then replay the trace.
+  document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();                // stay on the page instead of submitting the form
+    const text = input.value;
+    if (text.trim()) add(text, "you");
+    input.value = "";
+    send.disabled = true;
+    const id = ++run;
+    const thinking = add("thinking…", "bot", "thinking");
+    const t0 = performance.now();
+    const res = await api("/api/step4/chat", { message: text });
+    const totalMs = performance.now() - t0;
+    thinking.remove();
+    add(res.ok ? res.data.reply : whyFailed(res), "bot");
+    send.disabled = false;
+    input.focus();
+    replay(text, res, totalMs, id);
+  });
+</script>
+</body>
+</html>

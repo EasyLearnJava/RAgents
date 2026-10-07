@@ -11,5 +11,11 @@ firebase-debug.log
 .env.*
 
 node_modules/
+
+# Python (step 4 onwards): virtual environments and caches
+.venv/
+__pycache__/
+.pytest_cache/
+
 .DS_Store
 Thumbs.db

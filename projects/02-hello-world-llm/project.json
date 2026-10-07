@@ -8,5 +8,5 @@
     "Why the API key never goes in browser code, and how Firebase AI Logic + App Check protect it",
     "Handling slow replies and errors (quota, permissions, network) like a real product"
   ],
-  "next": "It forgets everything between messages, so step 3 adds a conversation history."
+  "next": "It forgets everything between messages (a later step adds history). Step 3 first rebuilds step 1 with LangChain, the framework most agents are built with."
 }
