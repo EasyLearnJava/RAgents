@@ -9,8 +9,8 @@ import { MAX_CHARS, createAgent, errorKind, friendlyError, setupProblem } from "
 
 test("step 2: sends the trimmed message to the model and returns its reply", async () => {
   const sent = [];
-  const respond = createAgent(async (text) => { sent.push(text); return "  Hello World! Nice to meet you.  "; });
-  assert.equal(await respond("  Hello  "), "Hello World! Nice to meet you.");
+  const respond = createAgent(async (text) => { sent.push(text); return "  Hi! Nice to meet you.  "; });
+  assert.equal(await respond("  Hello  "), "Hi! Nice to meet you.");
   assert.deepEqual(sent, ["Hello"]);
 });
 

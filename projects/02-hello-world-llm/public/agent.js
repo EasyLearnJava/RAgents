@@ -7,11 +7,12 @@
  * provides that function lives in main.js.
  */
 
-/** Standing instructions sent to the model with every message (its "personality"). */
-export const SYSTEM_INSTRUCTION =
-  "You are the Hello World agent, the first step in a series of learning projects. " +
-  "Reply in one or two short, friendly sentences. " +
-  "If the user greets you, start your reply with 'Hello World!'.";
+/**
+ * Standing instructions sent to the model with every message. The reply shown in the chat is exactly
+ * what the model returns; this only shapes it. Kept short and neutral (it used to ask for a "Hello World!"
+ * opener, which the small model added to every reply). Set it to "" to send no instructions at all.
+ */
+export const SYSTEM_INSTRUCTION = "You are a helpful assistant. Keep replies short: one to three sentences.";
 
 /** Longest message accepted. Keeps requests small and protects the free model quota. */
 export const MAX_CHARS = 500;
