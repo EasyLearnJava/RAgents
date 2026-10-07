@@ -12,6 +12,9 @@ firebase-debug.log
 
 node_modules/
 
+# Vercel CLI: links this folder to your Vercel project (created by `vercel link`)
+.vercel/
+
 # Python (step 4 onwards): virtual environments and caches
 .venv/
 __pycache__/
@@ -19,3 +22,5 @@ __pycache__/
 
 .DS_Store
 Thumbs.db
+
+.vercel

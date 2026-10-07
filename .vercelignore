@@ -1,0 +1,11 @@
+# Files never uploaded to Vercel (it rebuilds dist/ and installs packages itself).
+node_modules/
+dist/
+.venv/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+.firebase/
+*-debug.log
+.env
+.env.*
