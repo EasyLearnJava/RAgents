@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_CHARS, createAgent, friendlyError, setupProblem } from "../public/agent.js";
+import { MAX_CHARS, createAgent, errorKind, friendlyError, setupProblem } from "../public/agent.js";
 
 test("step 2: sends the trimmed message to the model and returns its reply", async () => {
   const sent = [];
@@ -33,6 +33,19 @@ test("step 2: model errors become friendly messages", async () => {
 
 test("step 2: an empty model reply is handled", async () => {
   assert.match(await createAgent(async () => "")("Hi"), /empty reply/);
+});
+
+test("step 2: events describe each stage (they drive the flow diagram)", async () => {
+  const types = async (gen, msg) => { const ev = []; await createAgent(gen, (e) => ev.push(e))(msg); return ev; };
+  const ok = await types(async () => "Hi!", "Hello");
+  assert.deepEqual(ok.map((e) => e.type), ["accepted", "model-start", "model-ok"]);
+  assert.equal(ok[2].chars, 3);
+  assert.deepEqual(await types(async () => "x", "  "), [{ type: "rejected", reason: "empty" }]);
+  const failed = await types(async () => { throw new Error("[429 ] quota"); }, "Hi");
+  assert.equal(failed.at(-1).type, "model-error");
+  assert.equal(failed.at(-1).kind, "quota");
+  assert.equal(errorKind("Failed to fetch"), "network");
+  assert.equal(errorKind("403 PERMISSION_DENIED"), "appcheck");
 });
 
 test("step 2: setup problems are reported before calling the model", () => {

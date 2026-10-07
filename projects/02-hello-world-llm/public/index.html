@@ -10,7 +10,7 @@
     :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; --ok:#578a50; --warn:#a9493f; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+  body { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px;
          background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
   .chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
           border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
@@ -45,9 +45,83 @@
       <button id="send" type="submit">Send</button>
     </form>
   </main>
+  <div id="flow" style="width:100%"></div>
 <script type="module">
   // Page wiring for step 2: connect once (startAgent), then send each message to the model.
+  // Events from agent.js drive the "what happens" diagram under the chat.
   import { startAgent } from "./main.js";
+  import { MODEL } from "./ai-config.js";
+  import { createFlow } from "/lib/flow.js";
+
+  const flow = createFlow(document.getElementById("flow"), {
+    title: "What happens when you press Send",
+    hint: "Your message leaves the browser for the first time. App Check, AI Logic and Gemini happen in one request: " +
+          "they light up in order while you wait, then each shows its real result.",
+    lanes: [
+      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message" }] },
+      { label: "Your browser · your code", nodes: [
+        { id: "agent", title: "agent.js", sub: "not empty? ≤ 500 characters?" },
+        { id: "appcheck", title: "App Check", sub: "reCAPTCHA scores the visitor → single-use token" },
+      ] },
+      { label: "Google Cloud", nodes: [
+        { id: "ailogic", title: "Firebase AI Logic", sub: "checks the token, adds the Gemini key" },
+        { id: "gemini", title: `Gemini · ${MODEL}`, sub: "system instruction + your one message" },
+      ] },
+    ],
+    returnLabel: "⟵ the reply travels back: Gemini → AI Logic → your page → chat bubble",
+  });
+
+  // While the single request is in flight, light the boxes in order (the SDK doesn't report the phases).
+  let timers = [];
+  const stopTimers = () => { timers.forEach(clearTimeout); timers = []; };
+  const ERRORS = {
+    appcheck: { at: ["appcheck", "ailogic"], note: "rejected (403)", why: "AI Logic refused the request: App Check token missing or invalid" },
+    network: { at: ["ailogic"], note: "not reached", why: "the request never reached Google (network/offline)" },
+    quota: { at: ["gemini"], note: "quota used up (429)", why: "Gemini's free-tier limit was reached" },
+    busy: { at: ["gemini"], note: "busy (500/503)", why: "Gemini is overloaded right now" },
+    other: { at: ["gemini"], note: "error", why: "the model call failed" },
+  };
+
+  /** Turns each agent.js event into box states and trace lines. */
+  function onEvent(e) {
+    if (e.type === "rejected") {
+      const why = e.reason === "empty" ? "nothing typed" : "longer than 500 characters";
+      flow.set("agent", "error", why);
+      ["appcheck", "ailogic", "gemini"].forEach((id) => flow.set(id, "skip"));
+      flow.log(`agent.js stopped it: ${why}. No request was sent (no quota used).`, "error");
+    } else if (e.type === "accepted") {
+      flow.set("agent", "done", `${e.chars} characters, OK`);
+      flow.log(`agent.js: input OK (${e.chars} characters)`);
+    } else if (e.type === "model-start") {
+      flow.set("appcheck", "active");
+      flow.log("Firebase SDK: getting a single-use App Check token and sending the request…");
+      timers.push(setTimeout(() => flow.set("ailogic", "active"), 250));
+      timers.push(setTimeout(() => flow.set("gemini", "active"), 500));
+    } else if (e.type === "model-ok") {
+      stopTimers();
+      flow.set("appcheck", "done", "token accepted");
+      flow.set("ailogic", "done", "key added, forwarded");
+      flow.set("gemini", "done", `${e.ms} ms · ${e.chars} characters`);
+      flow.set("return", "done");
+      flow.log(`Gemini replied in ${e.ms} ms. It saw only the system instruction and this one message (no history yet).`, "done");
+    } else if (e.type === "model-empty") {
+      stopTimers();
+      flow.set("appcheck", "done"); flow.set("ailogic", "done");
+      flow.set("gemini", "error", "empty reply");
+      flow.set("return", "error");
+      flow.log("Gemini answered with an empty reply.", "error");
+    } else if (e.type === "model-error") {
+      stopTimers();
+      const err = ERRORS[e.kind] || ERRORS.other;
+      for (const id of ["appcheck", "ailogic", "gemini"]) {
+        if (err.at.includes(id)) flow.set(id, "error", err.note);
+        else if (["appcheck", "ailogic", "gemini"].indexOf(id) < ["appcheck", "ailogic", "gemini"].indexOf(err.at[0])) flow.set(id, "done");
+        else flow.set(id, "skip");
+      }
+      flow.set("return", "error");
+      flow.log(`Failed after ${e.ms} ms: ${err.why}.`, "error");
+    }
+  }
   const log = document.getElementById("log");        // the scrolling message list
   const input = document.getElementById("msg");      // the text box
   const send = document.getElementById("send");      // disabled while a reply is on its way
@@ -69,10 +143,15 @@
   // Connect once when the page loads. If setup is incomplete, show what's missing in the chat.
   let agent;
   try {
-    agent = await startAgent();
+    agent = await startAgent(onEvent);
     status.textContent = agent.ready ? agent.model : "setup needed";
     status.className = agent.ready ? "ok" : "warn";
-    if (!agent.ready) add(await agent.respond(""), "bot");
+    if (!agent.ready) {
+      const problem = await agent.respond("");
+      add(problem, "bot");
+      flow.set("appcheck", "error", "setup needed");
+      flow.log(problem, "error");
+    }
   } catch (err) {
     status.textContent = "error"; status.className = "warn";
     add("Couldn't start the agent: " + (err?.message || err), "bot");
@@ -84,6 +163,10 @@
     if (!agent) return;
     const text = input.value;
     if (text.trim()) add(text, "you");
+    stopTimers();
+    flow.start();
+    flow.set("you", "done", text.trim() ? `“${text.trim().slice(0, 30)}”` : "(empty)");
+    flow.log(`You typed “${text.trim()}”`);
     input.value = "";
     send.disabled = true;
     const thinking = add("thinking…", "bot", "thinking");

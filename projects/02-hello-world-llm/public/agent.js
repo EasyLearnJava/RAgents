@@ -24,21 +24,52 @@ export const MAX_CHARS = 500;
  *
  * @param {(text: string) => Promise<string>} generate Sends text to a model and resolves to its reply.
  *   main.js passes the Gemini call; the tests pass a fake.
+ * @param {(event: object) => void} [onEvent] Optional: told what happens at each stage, so the page's
+ *   flow diagram can show it. Events, in order:
+ *   {type: "rejected", reason: "empty"|"too-long"} - stopped before the model (no request made), or
+ *   {type: "accepted", chars} then {type: "model-start"} then one of
+ *   {type: "model-ok", ms, chars} | {type: "model-empty", ms} | {type: "model-error", ms, kind, message}.
  * @returns {(message: unknown) => Promise<string>} `respond(message)`: always resolves to text to show
  *   in the chat, never rejects.
  */
-export function createAgent(generate) {
+export function createAgent(generate, onEvent = () => {}) {
   return async function respond(message) {
     const text = String(message ?? "").trim();
-    if (text === "") return "Type something first. Try: Hello";
-    if (text.length > MAX_CHARS) return `That's a long message. Please keep it under ${MAX_CHARS} characters.`;
+    if (text === "") { onEvent({ type: "rejected", reason: "empty" }); return "Type something first. Try: Hello"; }
+    if (text.length > MAX_CHARS) {
+      onEvent({ type: "rejected", reason: "too-long" });
+      return `That's a long message. Please keep it under ${MAX_CHARS} characters.`;
+    }
+    onEvent({ type: "accepted", chars: text.length });
+    onEvent({ type: "model-start" });
+    const t0 = Date.now();
     try {
       const reply = String((await generate(text)) ?? "").trim();
-      return reply || "The model sent an empty reply. Please try again.";
+      if (!reply) { onEvent({ type: "model-empty", ms: Date.now() - t0 }); return "The model sent an empty reply. Please try again."; }
+      onEvent({ type: "model-ok", ms: Date.now() - t0, chars: reply.length });
+      return reply;
     } catch (err) {
+      onEvent({ type: "model-error", ms: Date.now() - t0, kind: errorKind(err), message: String(err?.message ?? err ?? "") });
       return friendlyError(err);
     }
   };
+}
+
+/**
+ * Classifies an SDK/API error by where it happened.
+ *
+ * @param {unknown} err The thrown error (or any value).
+ * @returns {"appcheck"|"quota"|"busy"|"network"|"other"}
+ *   appcheck = rejected by App Check / AI Logic (403); quota = 429; busy = model overloaded (500/503);
+ *   network = never reached Google.
+ */
+export function errorKind(err) {
+  const msg = String(err?.message ?? err ?? "");
+  if (/app.?check|PERMISSION_DENIED|\b403\b/i.test(msg)) return "appcheck";
+  if (/RESOURCE_EXHAUSTED|\b429\b|quota|rate.?limit/i.test(msg)) return "quota";
+  if (/high demand|overloaded|UNAVAILABLE|\b50[03]\b/i.test(msg)) return "busy";
+  if (/failed to fetch|network|offline|ERR_/i.test(msg)) return "network";
+  return "other";
 }
 
 /**
@@ -52,20 +83,14 @@ export function createAgent(generate) {
  * @returns {string} A message to show in the chat.
  */
 export function friendlyError(err) {
-  const msg = String(err?.message ?? err ?? "");
-  if (/app.?check|PERMISSION_DENIED|\b403\b/i.test(msg)) {
-    return "The model refused the request because App Check isn't set up (or this browser isn't registered). See the step 2 README.";
+  switch (errorKind(err)) {
+    case "appcheck":
+      return "The model refused the request because App Check isn't set up (or this browser isn't registered). See the step 2 README.";
+    case "quota": return "The free model quota is used up for now. Please try again in a minute.";
+    case "busy": return "The model is busy right now (high demand). Please try again in a moment.";
+    case "network": return "Couldn't reach the model. Check your connection and try again.";
+    default: return "Something went wrong calling the model: " + String(err?.message ?? err ?? "").slice(0, 160);
   }
-  if (/RESOURCE_EXHAUSTED|\b429\b|quota|rate.?limit/i.test(msg)) {
-    return "The free model quota is used up for now. Please try again in a minute.";
-  }
-  if (/high demand|overloaded|UNAVAILABLE|\b50[03]\b/i.test(msg)) {
-    return "The model is busy right now (high demand). Please try again in a moment.";
-  }
-  if (/failed to fetch|network|offline|ERR_/i.test(msg)) {
-    return "Couldn't reach the model. Check your connection and try again.";
-  }
-  return "Something went wrong calling the model: " + msg.slice(0, 160);
 }
 
 /**

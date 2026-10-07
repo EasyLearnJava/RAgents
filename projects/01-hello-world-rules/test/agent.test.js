@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { respond } from "../public/agent.js";
+import { explain, respond } from "../public/agent.js";
 
 test("step 1: greetings get Hello World", () => {
   for (const msg of ["Hello", "hello", "  HELLO  ", "hello there", "Hi", "hey!"]) {
@@ -22,4 +22,10 @@ test("step 1: empty input is handled", () => {
   for (const msg of ["", "   ", undefined, null]) {
     assert.match(respond(msg), /Hello/);
   }
+});
+
+test("step 1: explain() names the rule that fired (shown in the flow diagram)", () => {
+  assert.deepEqual(explain("hi there"), { reply: "Hello World", rule: "greeting" });
+  assert.equal(explain("weather?").rule, "fallback");
+  assert.equal(explain("  ").rule, "empty");
 });

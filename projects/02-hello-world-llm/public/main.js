@@ -36,9 +36,10 @@ async function loadFirebaseConfig() {
  * If setup is incomplete it does not throw: it returns ready=false, and respond() replies with
  * the setup instruction, so the page can show it in the chat.
  *
+ * @param {(event: object) => void} [onEvent] Optional stage reporter for the flow diagram (see createAgent in agent.js).
  * @returns {Promise<{ready: boolean, model: string, respond: (message: unknown) => Promise<string>}>}
  */
-export async function startAgent() {
+export async function startAgent(onEvent) {
   const config = await loadFirebaseConfig();
   const problem = setupProblem({ config, siteKey: RECAPTCHA_SITE_KEY, model: MODEL });
   if (problem) return { ready: false, model: MODEL, respond: async () => problem };
@@ -57,5 +58,5 @@ export async function startAgent() {
 
   // One message in, one reply out. No history yet: that's step 3.
   const generate = async (text) => (await model.generateContent(text)).response.text();
-  return { ready: true, model: MODEL, respond: createAgent(generate) };
+  return { ready: true, model: MODEL, respond: createAgent(generate, onEvent) };
 }

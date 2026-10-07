@@ -14,6 +14,20 @@
 const GREETING = /^\s*(hello|hi|hey)\b/i;
 
 /**
+ * Decides the reply and reports which rule produced it (the page's flow diagram shows this).
+ *
+ * @param {unknown} message What the user typed. null/undefined are treated as empty.
+ * @returns {{reply: string, rule: "empty"|"greeting"|"fallback"}}
+ * @example explain("hi there")   // { reply: "Hello World", rule: "greeting" }
+ */
+export function explain(message) {
+  const text = String(message ?? "").trim();
+  if (text === "") return { reply: "Type something first. Try: Hello", rule: "empty" };
+  if (GREETING.test(text)) return { reply: "Hello World", rule: "greeting" };
+  return { reply: 'I only know one thing so far. Say "Hello"!', rule: "fallback" };
+}
+
+/**
  * Returns the agent's reply to one message.
  *
  * @param {unknown} message What the user typed. null/undefined are treated as empty.
@@ -22,8 +36,5 @@ const GREETING = /^\s*(hello|hi|hey)\b/i;
  * @example respond("weather?")   // 'I only know one thing so far. Say "Hello"!'
  */
 export function respond(message) {
-  const text = String(message ?? "").trim();
-  if (text === "") return "Type something first. Try: Hello";
-  if (GREETING.test(text)) return "Hello World";
-  return 'I only know one thing so far. Say "Hello"!';
+  return explain(message).reply;
 }

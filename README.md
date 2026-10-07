@@ -25,6 +25,7 @@ RAgents/
 │  │  └─ README.md
 │  └─ 02-hello-world-llm/
 ├─ shell/index.html          the site: left nav + the selected project
+├─ shell/lib/flow.js         live "what happens when you press Send" diagram, shared by every step
 ├─ scripts/build.mjs         builds dist/ from shell/ + every projects/*/public
 ├─ scripts/serve.mjs         local preview on http://127.0.0.1:5000
 ├─ firebase.json             deploys dist/ (runs the build first)
@@ -54,6 +55,9 @@ The site lists projects from each `project.json`, sorted by `step`. Each project
   Firebase AI Logic (holds the Gemini key) → Gemini → reply. `agent.js` checks the input first and turns
   errors into readable messages.
 
+Each step's page shows this live under the chat: press Send and each box lights up as your message passes through it.
+A box turns red where something failed, and a timed trace lists what happened.
+
 ## Everyday commands (run in the repo root)
 
 ```powershell
@@ -71,6 +75,8 @@ see [its README](projects/02-hello-world-llm/README.md).
 1. Copy the latest project folder, e.g. `projects/02-hello-world-llm` → `projects/03-chat-with-history`.
 2. In its `project.json`, set the next `step` number, a `title`, `summary`, `learn` list and `next`.
 3. Change the code, add tests, run `npm test` and `npm run serve`.
+   Update the diagram under the chat: the page passes its own boxes to `createFlow()` (from `/lib/flow.js`) and
+   lights them up as the agent reports each stage. See step 2's `index.html` for the pattern.
 4. Deploy. The new step appears in the left nav automatically.
 
 No other file needs to change.
