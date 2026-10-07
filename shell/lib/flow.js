@@ -16,18 +16,21 @@
  */
 
 const CSS = `
-.fl { width: 100%; max-width: 980px; margin: 0 auto; background: var(--card, #fbf6eb); color: var(--ink, #241b15);
+.fl { width: 100%; max-width: 1180px; margin: 0 auto; background: var(--card, #fbf6eb); color: var(--ink, #241b15);
       border: 3px solid var(--ink, #241b15); border-radius: 22px; box-shadow: 6px 6px 0 var(--ink, #241b15); padding: 16px 18px 14px; }
 .fl h2 { margin: 0 0 2px; font-size: 1.05rem; }
 .fl .fl-hint { margin: 0 0 14px; font-size: .85rem; color: var(--muted, #65543f); }
-.fl-lanes { display: flex; align-items: stretch; gap: 10px; }
-.fl-lane { flex: var(--n, 1) 1 0; min-width: 0; border: 2px dashed var(--muted, #65543f); border-radius: 16px; padding: 30px 10px 10px; position: relative; }
+/* Lanes wrap onto a new line when they don't fit, instead of squeezing the boxes. */
+.fl-lanes { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px 10px; }
+/* Lanes are only as wide as their boxes (they don't stretch), so a short step stays a small box. */
+.fl-lane { flex: 0 1 auto; min-width: 0; border: 2px dashed var(--muted, #65543f); border-radius: 16px; padding: 30px 10px 10px; position: relative; }
 .fl-lane > b { position: absolute; top: 4px; left: 12px; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted, #65543f); }
 .fl-row { display: flex; align-items: center; gap: 6px; height: 100%; }
-.fl-node { flex: 1 1 0; min-width: 0; align-self: stretch; border: 2.5px solid var(--ink, #241b15); border-radius: 14px; padding: 8px 10px;
+/* Every box has the same fixed width; long text wraps inside it. */
+.fl-node { flex: 0 0 200px; width: 200px; min-width: 0; align-self: stretch; border: 2.5px solid var(--ink, #241b15); border-radius: 14px; padding: 8px 10px;
            background: var(--bg, #f6eedd); position: relative; transition: background .25s, opacity .25s; }
-.fl-node .t { font-weight: 800; font-size: .9rem; line-height: 1.2; }
-.fl-node .s { font-size: .74rem; color: var(--muted, #65543f); line-height: 1.3; margin-top: 2px; }
+.fl-node .t { font-weight: 800; font-size: .9rem; line-height: 1.2; overflow-wrap: break-word; }
+.fl-node .s { font-size: .74rem; color: var(--muted, #65543f); line-height: 1.3; margin-top: 2px; overflow-wrap: break-word; }
 .fl-node .n { font-size: .74rem; font-weight: 700; margin-top: 4px; min-height: 1em; overflow-wrap: anywhere; }
 .fl-node::after { position: absolute; top: -10px; right: -8px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
                   font-size: .72rem; font-weight: 900; color: #fff; border: 2px solid var(--ink, #241b15); }
@@ -58,8 +61,8 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { .fl-node.active { animation: none; } }
 @media (max-width: 720px) {
   .fl-lanes, .fl-row, .fl-back, .fl-back .fl-row { flex-direction: column; }
-  .fl-lane { flex: none; }
-  .fl-node { align-self: stretch; }
+  .fl-lane { flex: none; min-width: 0; }
+  .fl-node { align-self: stretch; min-width: 0; width: auto; flex: none; }
   .fl-arrow, .fl-gap { transform: rotate(90deg); align-self: center; }
   .fl-back .fl-arrow, .fl-back .fl-gap { transform: rotate(-90deg); }
   .fl-dir-back { text-align: left; }

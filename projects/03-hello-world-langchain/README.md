@@ -6,9 +6,19 @@ about LangChain's building blocks, so the model can drop into place later.
 | File | What it is |
 |---|---|
 | `project.json` | Title, summary and "what you learn" for the site's left nav |
-| `public/agent.js` | The agent as a LangChain chain: `normalize` (RunnableLambda) `.pipe(` `rules` (RunnableBranch) `)` |
-| `public/index.html` | Chat window + import map (loads LangChain from the CDN) + the live diagram |
+| `public/agent.js` | The agent as a LangChain chain: `normalize` (RunnableLambda) `.pipe(` `rules` (RunnableBranch) `)`. The page calls `chain.invoke(text)` |
+| `public/index.html` | Chat window + import map (loads LangChain from the CDN) |
+| `public/style.css` | How the chat page looks |
 | `test/agent.test.js` | Checks every reply matches step 1, and that `streamEvents()` reports each step |
+
+**Extras** (teaching aids, not part of the agent):
+
+| File | What it is |
+|---|---|
+| `public/extras/diagram.js` | The "What happens when you press Send" diagram, built from LangChain's `streamEvents()` |
+| `public/extras/langsmith-todo.js` + `.html` | The "To do: show a LangSmith trace" card (planning notes and risks) |
+
+To see the agent without the extras, delete the lines marked `EXTRA` in `index.html`; the chat works the same.
 
 ## Step 1 vs step 3
 
@@ -39,7 +49,7 @@ So a later step can swap `reply: fallback` for a real model and keep the rest of
 
 ## What the diagram shows
 
-The page runs `chain.streamEvents(text, { version: "v2" })` and records LangChain's real events
+`extras/diagram.js` runs the chain once more with `chain.streamEvents(text, { version: "v2" })` (instant, no model) and records LangChain's real events
 (`on_chain_start` / `on_chain_end` for `hello-chain`, `normalize`, `rules`, `is empty?`, `is greeting?`, `reply: …`).
 The whole chain takes a few milliseconds, so the diagram replays those events slowly. The trace shows the real event
 names, outputs and times, and the `rules` box shows which checks ran, e.g. `is empty? no · is greeting? yes → reply: Hello World`.

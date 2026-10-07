@@ -4,28 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Step 1 · Hello World (rules)</title>
-<style>
-  :root { --bg:#f6eedd; --card:#fbf6eb; --ink:#241b15; --muted:#65543f; --you:#4f7bc0; --bot:#c8683e; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px;
-         background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
-  .chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
-          border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
-  header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem; }
-  header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
-  #log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 80%; padding: 8px 14px; border: 2.5px solid var(--ink); border-radius: 16px; color: #fff8ec; white-space: pre-wrap; }
-  .you { align-self: flex-end; background: var(--you); }
-  .bot { align-self: flex-start; background: var(--bot); }
-  form { display: flex; gap: 8px; padding: 12px; border-top: 3px solid var(--ink); }
-  input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
-          border: 2.5px solid var(--ink); border-radius: 999px; padding: 8px 14px; }
-  button { font: inherit; font-weight: 800; border: 2.5px solid var(--ink); border-radius: 12px;
-           background: var(--bot); color: #fff8ec; padding: 8px 16px; cursor: pointer; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="chat">
@@ -36,59 +15,13 @@
       <button type="submit">Send</button>
     </form>
   </main>
-  <div id="flow" style="width:100%"></div>
 <script type="module">
-  // Page wiring for step 1: read the input, ask the agent (agent.js), show both messages,
-  // and animate the "what happens" diagram from what the agent actually did.
-  import { explain } from "./agent.js";
-  import { createFlow } from "/lib/flow.js";
+  // Page wiring for step 1: read the input, ask the agent (agent.js), show both messages.
+  import { respond } from "./agent.js";
+  import { showDiagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
+
   const log = document.getElementById("log");      // the scrolling message list
   const input = document.getElementById("msg");    // the text box
-
-  const RULES = { empty: "nothing typed → hint", greeting: "greeting rule matched", fallback: "no rule matched → fallback" };
-  const flow = createFlow(document.getElementById("flow"), {
-    title: "What happens when you press Send",
-    hint: "Everything runs inside your browser: no server, no model, no network. Slowed down so you can follow it.",
-    lanes: [
-      { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message, press Send" }] },
-      { label: "Your code · in your browser", nodes: [
-        { id: "page", title: "index.html", sub: "reads the text box, calls respond()" },
-        { id: "agent", title: "agent.js", sub: "empty? → hello|hi|hey? → fallback" },
-      ] },
-    ],
-    response: [
-      { label: "Your code · in your browser", nodes: [
-        { id: "r-agent", title: "agent.js", sub: "returns the reply text" },
-        { id: "r-page", title: "index.html", sub: "adds the reply as a chat bubble" },
-      ] },
-      { label: "You", nodes: [{ id: "r-you", title: "You", sub: "read the reply" }] },
-    ],
-  });
-  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-  let run = 0;                                     // a newer message cancels an older animation
-
-  /** Replays one message through the diagram. `result` is what agent.js decided; `ms` its real run time. */
-  async function animate(text, result, ms) {
-    const id = ++run;
-    flow.start();
-    flow.set("you", "done", `“${text.trim().slice(0, 30)}”`);
-    flow.log(`You typed “${text.trim()}”`);
-    flow.set("page", "active"); await pause(300); if (id !== run) return;
-    flow.set("page", "done", "called respond()");
-    flow.log("index.html passed the text to respond() in agent.js");
-    flow.set("agent", "active"); await pause(400); if (id !== run) return;
-    flow.set("agent", "done", RULES[result.rule]);
-    flow.log(`agent.js: ${RULES[result.rule]} (real time: ${ms < 0.1 ? "under 0.1" : ms.toFixed(2)} ms)`);
-    // The way back: the same files, in reverse.
-    flow.set("r-agent", "active"); await pause(300); if (id !== run) return;
-    flow.set("r-agent", "done", `returned “${result.reply.slice(0, 40)}”`);
-    flow.log("agent.js returned the reply text to index.html");
-    flow.set("r-page", "active"); await pause(300); if (id !== run) return;
-    flow.set("r-page", "done", "bubble added");
-    flow.log("index.html added the reply bubble to the chat");
-    flow.set("r-you", "done", `“${result.reply.slice(0, 40)}”`);
-    flow.log(`You see: “${result.reply}”`, "done");
-  }
 
   /** Appends one chat bubble. `who` is "you" (right, blue) or "bot" (left, orange). */
   function add(text, who) {
@@ -98,19 +31,19 @@
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
   }
-  // Send on Enter or the Send button: show the user's message, then the agent's reply.
-  document.getElementById("form").addEventListener("submit", (e) => {
+
+  /** Runs when you press Send or Enter (the form's "submit" event). */
+  function onSend(e) {
     e.preventDefault();                // stay on the page instead of submitting the form
     const text = input.value;
     if (text.trim()) add(text, "you");
-    const t = performance.now();
-    const result = explain(text);
-    const ms = performance.now() - t;
-    add(result.reply, "bot");
+    const reply = respond(text);       // ← the call into agent.js
+    add(reply, "bot");                 // ← the reply goes back onto the page
     input.value = "";
     input.focus();
-    animate(text, result, ms);
-  });
+    showDiagram(text, reply);          // EXTRA: replay this message in the diagram
+  }
+  document.getElementById("form").addEventListener("submit", onSend);
 </script>
 </body>
 </html>

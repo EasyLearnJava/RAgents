@@ -16,12 +16,21 @@ Browser (index.html) ── POST /api/step4/chat ──► FastAPI (main.py) ─
 | File | What it is |
 |---|---|
 | `project.json` | Title, summary and "what you learn" for the site's left nav |
-| `public/index.html` | Chat + diagram; calls the backend with `fetch` |
-| `backend/agent.py` | The chain in Python: `normalize \| rules` (`RunnableLambda`, `RunnableBranch`) and `run_with_events()` |
+| `public/index.html` | The chat; calls the backend with `fetch` and shows the reply (or why it failed) |
+| `public/style.css` | How the chat page looks |
+| `backend/agent.py` | The chain in Python: `normalize \| rules` (`RunnableLambda`, `RunnableBranch`), and `run_with_events()`, which main.py calls (it also returns LangChain's events for the diagram) |
 | `backend/main.py` | FastAPI: `GET /api/step4/health`, `POST /api/step4/chat` (rejects > 1000 characters with 422) |
 | `backend/tests/test_agent.py` | pytest: same replies as step 1, events reported, API status codes |
 | `backend/requirements*.txt` | Pinned packages (server / server + tests) |
 | `backend/Dockerfile`, `.gcloudignore` | How Cloud Run builds and runs it (used only when deploying) |
+
+**Extras** (teaching aids, not part of the agent):
+
+| File | What it is |
+|---|---|
+| `public/extras/diagram.js` | The "What happens when you press Send" diagram: onSend → api → chat() → run_with_events() → chain, and back, using the server's events from the JSON reply |
+
+To see the agent without the extras, delete the lines marked `EXTRA` in `index.html`; the chat works the same.
 
 ## Run it on your machine
 

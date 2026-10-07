@@ -1,0 +1,21 @@
+/* Step 1: styles for the chat page (index.html). Colours switch automatically in dark mode. */
+:root { --bg:#f6eedd; --card:#fbf6eb; --ink:#241b15; --muted:#65543f; --you:#4f7bc0; --bot:#c8683e; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px;
+       background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+.chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
+        border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
+header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem; }
+header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
+#log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 80%; padding: 8px 14px; border: 2.5px solid var(--ink); border-radius: 16px; color: #fff8ec; white-space: pre-wrap; }
+.you { align-self: flex-end; background: var(--you); }
+.bot { align-self: flex-start; background: var(--bot); }
+form { display: flex; gap: 8px; padding: 12px; border-top: 3px solid var(--ink); }
+input { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+        border: 2.5px solid var(--ink); border-radius: 999px; padding: 8px 14px; }
+button { font: inherit; font-weight: 800; border: 2.5px solid var(--ink); border-radius: 12px;
+         background: var(--bot); color: #fff8ec; padding: 8px 16px; cursor: pointer; }

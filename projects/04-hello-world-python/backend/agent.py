@@ -8,6 +8,8 @@ Same rules and replies as step 1 (plain JS) and step 3 (LangChain.js):
 
 Python's LangChain uses the same building blocks as LangChain.js; `a | b` is Python's `a.pipe(b)`.
 No model, no keys: this step is about moving the agent to a backend. main.py exposes it over HTTP.
+
+main.py's chat() endpoint calls run_with_events(message) for every message; tests/test_agent.py tests the chain.
 """
 import re
 import time
@@ -36,29 +38,19 @@ rules = RunnableBranch(
     step("reply: fallback", lambda _: {"reply": 'I only know one thing so far. Say "Hello"!', "rule": "fallback"}),
 ).with_config(run_name="rules")
 
-# The whole agent: normalize, then rules.
+# The whole agent: normalize, then rules. chain.invoke(message) returns {"reply": ..., "rule": ...}.
 chain = (normalize | rules).with_config(run_name="hello-chain")
 
-# Named steps reported back to the page for its diagram (LangChain also emits unnamed internal runs).
+# Named steps reported back to the page (LangChain also emits unnamed internal runs).
 SHOWN = {"hello-chain", "normalize", "rules", "is empty?", "is greeting?",
          "reply: hint", "reply: Hello World", "reply: fallback"}
 
 
-def explain(message):
-    """Runs the chain; returns {"reply": ..., "rule": "empty" | "greeting" | "fallback"}."""
-    return chain.invoke(message)
-
-
-def respond(message):
-    """Returns just the reply text (same replies as step 1's respond())."""
-    return explain(message)["reply"]
-
-
 async def run_with_events(message):
     """
-    Runs the chain with LangChain's astream_events() and records each named step:
+    Runs the chain and returns (result, events, total_ms): the reply plus each named step LangChain reported,
     [{"event": "on_chain_start" | "on_chain_end", "name": ..., "ms": time since start, "output": ...}].
-    Returns (result, events, total_ms). The page replays these real server-side events in its diagram.
+    The events are for the page's diagram (an extra); the reply works the same without them.
     """
     events, result = [], None
     t0 = time.perf_counter()

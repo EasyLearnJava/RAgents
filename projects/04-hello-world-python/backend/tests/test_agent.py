@@ -8,7 +8,7 @@ import asyncio
 import pytest
 from fastapi.testclient import TestClient
 
-from agent import explain, respond, run_with_events
+from agent import chain, run_with_events
 from main import MAX_CHARS, app
 
 HINT = "Type something first. Try: Hello"
@@ -24,13 +24,13 @@ SAME_AS_STEP_1 = [
 
 @pytest.mark.parametrize("message, expected", SAME_AS_STEP_1)
 def test_same_replies_as_step_1(message, expected):
-    assert respond(message) == expected
+    assert chain.invoke(message)["reply"] == expected
 
 
-def test_explain_names_the_branch():
-    assert explain("hi") == {"reply": "Hello World", "rule": "greeting"}
-    assert explain("weather?")["rule"] == "fallback"
-    assert explain("  ")["rule"] == "empty"
+def test_chain_names_the_branch():
+    assert chain.invoke("hi") == {"reply": "Hello World", "rule": "greeting"}
+    assert chain.invoke("weather?")["rule"] == "fallback"
+    assert chain.invoke("  ")["rule"] == "empty"
 
 
 def test_events_report_each_named_step():

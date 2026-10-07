@@ -10,8 +10,17 @@ It matches *Step 1 · Hello World agent* in the notes, with Gemini in place of O
 | `public/main.js` | Firebase wiring: config → App Check → AI Logic → model |
 | `public/ai-config.js` | **The only file you edit:** model name and App Check site key (neither is secret) |
 | `public/index.html` | Chat window with a status badge and a "thinking…" bubble |
+| `public/style.css` | How the chat page looks |
 | `test/agent.test.js` | Tests with a fake model (no network needed) |
 | `SAFETY_AND_ABUSE.md` | Why this public project is safe: each risk, how it's handled, and the console checklist |
+
+**Extras** (teaching aids, not part of the agent):
+
+| File | What it is |
+|---|---|
+| `public/extras/diagram.js` | The "What happens when you press Send" diagram: onSend → respond → generate → AI Logic → Gemini, and back. It follows the agent's real stages through the optional `onEvent` callback |
+
+To see the agent without the extras, delete the lines marked `EXTRA` in `index.html`; the chat works the same.
 
 ## Why there's no API key in the code
 

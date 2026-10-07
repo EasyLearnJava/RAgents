@@ -1,0 +1,83 @@
+<!-- EXTRA: the LangSmith to-do card, added under the diagram by langsmith-todo.js. -->
+<style>
+.todo { width: 100%; max-width: 1180px; background: var(--card); border: 3px solid var(--ink); border-radius: 22px;
+        box-shadow: 6px 6px 0 var(--ink); padding: 16px 18px; }
+.todo h2 { margin: 0 0 2px; font-size: 1.05rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.todo h2 span { font-size: .72rem; font-weight: 800; color: #fff8ec; background: var(--warn); border: 2px solid var(--ink);
+                border-radius: 999px; padding: 0 10px; }
+.todo > p { margin: 4px 0 12px; font-size: .88rem; color: var(--muted); }
+.todo h3 { margin: 16px 0 6px; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.todo ol { margin: 0; padding-left: 22px; }
+.todo li { margin: 0 0 10px; font-size: .9rem; }
+.todo li b { display: block; }
+.todo li small { display: block; color: var(--muted); }
+.todo ul.tasks { list-style: none; padding: 0; margin: 0; }
+.todo ul.tasks li { margin: 4px 0; }
+.todo ul.tasks li::before { content: "☐ "; font-weight: 900; }
+</style>
+<!-- To do: real LangSmith tracing. Nothing here is built yet; this lists the open issues to solve first. -->
+<section class="todo" aria-label="To do: add LangSmith tracing">
+  <h2>To do: show a LangSmith trace <span>not started · open risks</span></h2>
+  <p>Goal: send each run of this chain to LangSmith (LangChain's hosted tracing service) and show the trace for it.
+     The diagram above already shows the steps using LangChain's own events, with no account and no data leaving the
+     browser. Real LangSmith adds stored history across users, but every item below has to be solved first.</p>
+
+  <h3>Risks and issues to handle</h3>
+  <ol>
+    <li><b>API key exposure</b>
+      LangSmith needs an API key to receive traces. Anything in browser code is public, so anyone could copy the key and
+      write to, or flood, the LangSmith project. This breaks the "no keys in browser code" rule step 2 follows.
+      <small>To handle: the key must live only on a server, never in <code>public/</code> or git.</small></li>
+    <li><b>Needs a backend (and billing)</b>
+      Holding the key means a small proxy: a Cloud Function or Cloud Run. Both need Firebase's paid Blaze plan, which
+      means a billing account on a project that is free today.
+      <small>To handle: decide on Blaze; set a budget alert and spending caps before turning it on.</small></li>
+    <li><b>Proxy abuse</b>
+      Once a public endpoint accepts traces, anyone can send fake or huge traces through it, using up LangSmith limits
+      and the function's free quota.
+      <small>To handle: protect the proxy with App Check (as in step 2), validate the payload, limit size and rate per user.</small></li>
+    <li><b>Data leaves the browser</b>
+      Every message and reply would be stored by LangChain Inc. (a third party) for the LangSmith retention period.
+      Today step 3 sends nothing anywhere.
+      <small>To handle: made-up test data only; mask or hide inputs/outputs; pick the data region and retention; check
+      nothing personal or work-related is ever typed.</small></li>
+    <li><b>Visitors aren't told</b>
+      People using the public site would have their messages logged without knowing.
+      <small>To handle: show a clear notice ("messages on this page are traced"), or trace only your own test runs.</small></li>
+    <li><b>Can't show LangSmith inside this page</b>
+      LangSmith's trace view is on its own site and needs a login, so it can't simply be embedded here. Public share
+      links make that trace readable by anyone with the link.
+      <small>To handle: show a link only, keep traces private, or keep the built-in diagram as the in-page view.</small></li>
+    <li><b>Cost and limits</b>
+      LangSmith's free tier limits traces per month and how long they're kept; beyond that it's paid.
+      <small>To handle: check the current plan limits; sample traces (not every message) if traffic grows.</small></li>
+    <li><b>Slower or broken chat</b>
+      Sending a trace is an extra network call per message. If LangSmith or the proxy is slow or down, it must not
+      delay or break the reply.
+      <small>To handle: send traces in the background after replying, batch them, ignore failures.</small></li>
+    <li><b>Browser setup is different</b>
+      LangChain switches tracing on with environment variables (<code>LANGSMITH_TRACING</code>, <code>LANGSMITH_API_KEY</code>),
+      which don't exist in a browser. Calling the LangSmith API straight from a web page may also be blocked by CORS.
+      <small>To handle: configure the tracer in code and point it at our own proxy, not at LangSmith directly.</small></li>
+    <li><b>Corporate network</b>
+      On the work laptop, the proxy (Zscaler) inspects HTTPS and may block or slow <code>smith.langchain.com</code>.
+      <small>To handle: test from a personal network too; use only a personal LangSmith account.</small></li>
+    <li><b>Secrets in git</b>
+      A LangSmith key in an <code>.env</code> file or in code could be committed by mistake to this public repo.
+      <small>To handle: keep keys in the function's secret store; <code>.gitignore</code> already excludes <code>.env</code>; scan before every push.</small></li>
+    <li><b>Version mismatch</b>
+      The browser loads LangChain (and its bundled <code>langsmith</code> client) from the CDN, while tests use
+      <code>node_modules</code>. Different versions could trace differently.
+      <small>To handle: pin the same versions in the import map and <code>package.json</code>; upgrade both together.</small></li>
+  </ol>
+
+  <h3>Tasks once the risks are decided</h3>
+  <ul class="tasks">
+    <li>Create a personal LangSmith account and project (no work account)</li>
+    <li>Decide: Blaze plan + Cloud Function proxy, or keep tracing local only</li>
+    <li>Build the proxy: holds the key, checks App Check, limits size and rate</li>
+    <li>Send traces in the background from this page; add a visible "traced" notice</li>
+    <li>Show "Open this trace in LangSmith" under the diagram</li>
+    <li>Update SAFETY_AND_ABUSE notes and the build guide</li>
+  </ul>
+</section>

@@ -5,6 +5,13 @@
  * This file is pure logic with no Firebase imports, so it can be tested without a network:
  * the actual model call is passed in as a `generate` function. The Firebase wiring that
  * provides that function lives in main.js.
+ *
+ * Who calls what (no function here is test-only; the tests call them too):
+ * - createAgent(generate, onEvent): main.js's startAgent() builds the agent with it; the returned
+ *   respond(message) is what index.html's onSend() calls for every message.
+ * - errorKind(err), friendlyError(err): used inside respond() when the model call fails.
+ * - setupProblem(...): main.js's startAgent() checks the setup with it before connecting.
+ * - SYSTEM_INSTRUCTION: main.js sends it to Gemini with every message.
  */
 
 /**

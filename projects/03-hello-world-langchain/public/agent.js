@@ -12,6 +12,8 @@
  *
  * "@langchain/core/runnables" resolves to node_modules in tests (npm install) and to the jsDelivr CDN
  * in the browser (the import map in index.html). No data leaves the browser: LangSmith tracing is off.
+ *
+ * index.html calls chain.invoke(text) for every message; test/agent.test.js tests the chain.
  */
 import { RunnableBranch, RunnableLambda } from "@langchain/core/runnables";
 
@@ -37,23 +39,8 @@ export const rules = RunnableBranch.from([
   step("reply: fallback", () => ({ reply: 'I only know one thing so far. Say "Hello"!', rule: "fallback" })),
 ]).withConfig({ runName: "rules" });
 
-/** The whole agent: normalize, then rules. */
+/**
+ * The whole agent: normalize, then rules.
+ * chain.invoke(message) resolves to { reply, rule }, e.g. { reply: "Hello World", rule: "greeting" }.
+ */
 export const chain = normalize.pipe(rules).withConfig({ runName: "hello-chain" });
-
-/**
- * Runs the chain and returns the reply plus the rule that fired.
- * @param {unknown} message What the user typed.
- * @returns {Promise<{reply: string, rule: "empty"|"greeting"|"fallback"}>}
- */
-export function explain(message) {
-  return chain.invoke(message);
-}
-
-/**
- * Returns just the reply text (same replies as step 1's respond()).
- * @param {unknown} message What the user typed.
- * @returns {Promise<string>}
- */
-export async function respond(message) {
-  return (await explain(message)).reply;
-}

@@ -5,22 +5,22 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chain, explain, respond } from "../public/agent.js";
+import { chain } from "../public/agent.js";
 import { respond as step1 } from "../../01-hello-world-rules/public/agent.js";
 
 test("step 3: gives exactly the same replies as step 1", async () => {
   for (const msg of ["Hello", "  HELLO  ", "hi there", "hey!", "helloooo", "say hello", "What's the weather?", "", "   ", null, undefined]) {
-    assert.equal(await respond(msg), step1(msg), String(msg));
+    assert.equal((await chain.invoke(msg)).reply, step1(msg), String(msg));
   }
 });
 
-test("step 3: explain() names the branch that fired", async () => {
-  assert.deepEqual(await explain("hi"), { reply: "Hello World", rule: "greeting" });
-  assert.equal((await explain("weather?")).rule, "fallback");
-  assert.equal((await explain("  ")).rule, "empty");
+test("step 3: the chain names the branch that fired", async () => {
+  assert.deepEqual(await chain.invoke("hi"), { reply: "Hello World", rule: "greeting" });
+  assert.equal((await chain.invoke("weather?")).rule, "fallback");
+  assert.equal((await chain.invoke("  ")).rule, "empty");
 });
 
-test("step 3: streamEvents() reports each named step (this drives the diagram)", async () => {
+test("step 3: streamEvents() reports each named step (the diagram uses this)", async () => {
   const names = [];
   for await (const e of chain.streamEvents("hello", { version: "v2" })) {
     if (e.event === "on_chain_end") names.push(e.name);
