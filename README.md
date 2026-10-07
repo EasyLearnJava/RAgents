@@ -3,7 +3,9 @@
 Agents built one step at a time, from a rule-based Hello World to a real model, and later memory, tools and more.
 Every version is its own project folder. One website shows them all, with a left nav to move between steps.
 
-**Live site:** https://ragent-eec65.web.app (Firebase Hosting, project `ragent-eec65`)
+**Live sites:**
+- https://ragents-eight.vercel.app (Vercel): every step, including step 4's Python backend. Deploys on every `git push` to `main`
+- https://ragent-eec65.web.app (Firebase Hosting, project `ragent-eec65`): steps 1–3 (step 4 needs a backend, which Firebase Hosting can't run)
 
 | Step | Project | What it adds |
 |---|---|---|
@@ -33,6 +35,9 @@ RAgents/
 ├─ shell/lib/flow.js         live "what happens when you press Send" diagram, shared by every step
 ├─ scripts/build.mjs         builds dist/ from shell/ + every projects/*/public
 ├─ scripts/serve.mjs         local preview on http://127.0.0.1:5000 (forwards /api/* to a local Python backend on :8000)
+├─ vercel.json               Vercel: build dist/, serve it, send /api/* to Python
+├─ api/index.py              Vercel's entry point: loads step 4's FastAPI app
+├─ requirements.txt          Python packages Vercel installs (same pins as step 4's backend)
 ├─ firebase.json             deploys dist/ (runs the build first)
 └─ .firebaserc               default project: ragent-eec65
 ```
@@ -62,7 +67,7 @@ The site lists projects from each `project.json`, sorted by `step`. Each project
 - **Step 3:** browser → LangChain chain (`normalize` → `rules` branch) → reply. Nothing leaves the browser; LangChain.js
   itself is downloaded from the jsDelivr CDN.
 - **Step 4:** browser → `POST /api/step4/chat` → FastAPI (Python) → LangChain chain → JSON reply + event trace → browser.
-  Locally `/api` goes to `127.0.0.1:8000`; on the live site Firebase Hosting forwards it to Cloud Run (once deployed).
+  Locally `/api` goes to `127.0.0.1:8000`; on Vercel it goes to a Python function (`api/index.py`).
 
 Each step's page shows this live under the chat: press Send and each box lights up as your message passes through it.
 A box turns red where something failed, and a timed trace lists what happened.
@@ -73,8 +78,10 @@ A box turns red where something failed, and a timed trace lists what happened.
 npm install                      # once: installs LangChain for step 3's tests (node_modules/ is not committed)
 npm test                         # all projects' tests
 npm run serve                    # build + preview at http://127.0.0.1:5000 (Ctrl+C to stop)
+git push                         # Vercel builds and publishes https://ragents-eight.vercel.app (~25 s)
 firebase deploy --only hosting   # build + publish every project to https://ragent-eec65.web.app
 ```
+Watch Vercel deploys at https://vercel.com/silverado/ragents/deployments. A failed build never replaces the live site.
 
 Python steps (4 onwards) also have a backend, with its own virtual environment and tests:
 
