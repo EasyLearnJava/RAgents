@@ -63,7 +63,8 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 ### 4. Someone captures a token and replays it
 - **Risk:** a valid token reused many times.
 - **How we solved it:** `useLimitedUseAppCheckTokens: true` in `public/main.js`. Each AI Logic request uses a fresh
-  single-use token, so a captured token is worthless.
+  single-use token, so a captured token is worthless. We also keep no hourly (cached) token in the browser
+  (`isTokenAutoRefreshEnabled: false`). The trade-offs are in the README: "Hourly token or a fresh one each time?".
 
 ### 5. The Firebase browser API key is "unrestricted"
 - **Risk:** the Cloud console warns that the project has an unrestricted API key. Unrestricted means it works from any
@@ -97,8 +98,10 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 - **How we solved it:**
   - `MODEL = "gemini-3.5-flash-lite"` in `public/ai-config.js`: Flash-Lite had free-tier headroom when `gemini-3.8-flash`
     kept returning `429` and `500`.
-  - `friendlyError()` in `public/agent.js` turns `403`, `429`, `500`/`503` and network errors into clear messages
+  - `friendlyError()` in `public/agent.js` turns `403`, `429`, `500`/`503`, timeouts and network errors into clear messages
     (tested in `test/agent.test.js`).
+  - A 30-second time limit (`REPLY_TIMEOUT_MS` in `public/main.js`): if no reply comes, the request is stopped and the chat
+    says the model took too long, instead of "thinking…" waiting for the SDK's default of 3 minutes.
 - **Note:** nothing of ours goes down. These are Google's servers saying "not right now".
 
 ### 10. The model's reply contains HTML or script (prompt injection → XSS)
@@ -138,10 +141,13 @@ For **C** (key "Browser key (auto created by Firebase)"):
 - **API restrictions are already set.** Firebase limited the key to 25 Firebase APIs, including Firebase AI Logic API,
   Firebase App Check API and Firebase Installations API. The Gemini API (Generative Language API) is **not** on it, so the
   key can't call Gemini directly. Leave this list as it is.
-- **Application restrictions are missing (currently "None").** Choose **Websites** and add `https://ragent-eec65.web.app/*`
-  and `https://ragent-eec65.firebaseapp.com/*`, then **Save**. It can take up to 5 minutes to apply.
+- **Application restrictions are missing (currently "None").** Choose **Websites** and add `https://ragent-eec65.web.app/*`,
+  `https://ragent-eec65.firebaseapp.com/*` and `https://ragents-eight.vercel.app/*` (the Vercel site uses the same key),
+  then **Save**. It can take up to 5 minutes to apply. Local testing sends the key from `http://127.0.0.1:5000`, so add
+  `http://127.0.0.1:5000/*` too if you still want to test locally; App Check still refuses it without your registered
+  debug token.
 
-Then test step 2 on the live site. If requests fail with `API_KEY_HTTP_REFERRER_BLOCKED`, check the two website entries
+Then test step 2 on the live sites. If requests fail with `API_KEY_HTTP_REFERRER_BLOCKED`, check the website entries
 for typos.
 
 ## What's still possible (honest limits)

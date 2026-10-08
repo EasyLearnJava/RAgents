@@ -28,6 +28,7 @@ test("step 2: model errors become friendly messages", async () => {
   assert.match(await fail("429 RESOURCE_EXHAUSTED")("Hi"), /quota/);
   assert.match(await fail("[500 ] This model is currently experiencing high demand.")("Hi"), /busy/);
   assert.match(await fail("Failed to fetch")("Hi"), /reach the model/);
+  assert.match(await fail("Timeout has expired.")("Hi"), /too long/);
   assert.match(await fail("boom")("Hi"), /Something went wrong.*boom/);
 });
 
@@ -46,6 +47,7 @@ test("step 2: events describe each stage (they drive the flow diagram)", async (
   assert.equal(failed.at(-1).kind, "quota");
   assert.equal(errorKind("Failed to fetch"), "network");
   assert.equal(errorKind("403 PERMISSION_DENIED"), "appcheck");
+  assert.equal(errorKind({ name: "AbortError", message: "Timeout has expired." }), "timeout");   // the SDK's time limit
 });
 
 test("step 2: setup problems are reported before calling the model", () => {

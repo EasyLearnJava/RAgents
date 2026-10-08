@@ -25,7 +25,7 @@ const SPEC = {
     ] },
     { label: "agent.js · main.js", nodes: [
       { id: "respond", title: "respond(message)", sub: "agent.js (built by createAgent): empty? ≤ 500 characters? → calls generate(text)" },
-      { id: "generate", title: "generate(text)", sub: "main.js: model.generateContent(text); the Firebase SDK adds a single-use App Check token" },
+      { id: "generate", title: "generate(text)", sub: "main.js: model.generateContent(text); the Firebase SDK gets a fresh single-use App Check token and attaches it" },
     ] },
     { label: "Google Cloud", nodes: [
       { id: "ailogic", title: "Firebase AI Logic", sub: "checks the App Check token, adds the Gemini key" },
@@ -58,21 +58,26 @@ const flow = createFlow(box, SPEC);
 
 const REQUEST = ["generate", "ailogic", "gemini"];
 const ERRORS = {
+  "no-token": { at: ["generate"], note: "no App Check token: not sent", why: "App Check gave this browser no token, so the Firebase SDK stopped before sending anything" },
   appcheck: { at: ["ailogic"], note: "rejected (403)", why: "Firebase AI Logic refused the request: App Check token missing or invalid" },
   network: { at: ["generate"], note: "couldn't reach Google", why: "the request never reached Google (network/offline)" },
   quota: { at: ["gemini"], note: "quota used up (429)", why: "Gemini's quota limit was reached" },
   busy: { at: ["gemini"], note: "busy (500/503)", why: "Gemini is overloaded right now" },
+  timeout: { at: ["gemini"], note: "no reply in time", why: "no reply came within main.js's time limit, so the SDK stopped waiting" },
   other: { at: ["gemini"], note: "error", why: "the model call failed" },
 };
 let timers = [];                  // lights the boxes in order while the single request is in flight
 let outcome = null;               // what happened on the way there; decides how the way back is drawn
 let run = 0;                      // a newer message cancels an older replay
+let sentAfter = 0;                // performance.now() when the message was sent: its request is found after this
 const stopTimers = () => { timers.forEach(clearTimeout); timers = []; };
+/** True if the page sent a request to Firebase AI Logic since t0 (from the browser's Resource Timing). */
+const sentSince = (t0) => performance.getEntriesByType("resource")
+  .some((r) => r.startTime >= t0 && r.name.includes("firebasevertexai.googleapis.com"));
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Request row: agent.js reports each stage here (createAgent's onEvent). */
 function event(e) {
-  if (e.type.startsWith("token")) return;   // App Check token updates are for the street view
   outcome = e;
   if (e.type === "rejected") {
     const why = e.reason === "empty" ? "nothing typed" : "longer than 500 characters";
@@ -84,7 +89,7 @@ function event(e) {
     flow.log(`respond() checked the input (${e.chars} characters) and called generate(text) in main.js`);
   } else if (e.type === "model-start") {
     flow.set("generate", "active");
-    flow.log("generate(text) called model.generateContent(text); the Firebase SDK added a single-use App Check token and sent the request…");
+    flow.log("generate(text) called model.generateContent(text): the Firebase SDK gets a fresh single-use App Check token, attaches it and sends the request…");
     timers.push(setTimeout(() => flow.set("ailogic", "active"), 250));
     timers.push(setTimeout(() => flow.set("gemini", "active"), 500));
   } else if (e.type === "model-ok" || e.type === "model-empty") {
@@ -95,7 +100,9 @@ function event(e) {
     flow.log(`Firebase AI Logic accepted the token and forwarded it; Gemini answered in ${e.ms} ms. It saw only the system instruction and this one message (no history yet).`);
   } else if (e.type === "model-error") {
     stopTimers();
-    const err = ERRORS[e.kind] || ERRORS.other;
+    // An App Check error without a request to Google: the SDK got no token and stopped in the browser.
+    if (e.kind === "appcheck" && !sentSince(sentAfter)) outcome = { ...e, kind: "no-token" };
+    const err = ERRORS[outcome.kind] || ERRORS.other;
     for (const id of REQUEST) {
       if (err.at.includes(id)) flow.set(id, "error", err.note);
       else if (REQUEST.indexOf(id) < REQUEST.indexOf(err.at[0])) flow.set(id, "done");
@@ -110,6 +117,7 @@ function start(text, ready) {
   stopTimers();
   run++;
   outcome = null;
+  sentAfter = performance.now();
   flow.start();
   flow.set("you", "done", text.trim() ? `“${text.trim().slice(0, 30)}”` : "(empty)");
   flow.log(`You typed “${text.trim().slice(0, 80)}” and pressed Send`);
@@ -149,9 +157,13 @@ async function reply(text) {
       ["r-ailogic", "done", "200 OK", "Firebase AI Logic sent it back"],
       ["r-generate", "done", "returned empty text", "generate() returned an empty string to respond()"],
       ["r-respond", "done", "→ “try again” message", "respond() returned a “please try again” message instead"]];
-  } else if (err && o.kind === "network") {
-    steps = [["r-gemini", "skip"], ["r-ailogic", "skip"],
-      ["r-generate", "error", "threw a network error", "generate() threw a network error (nothing came back)"],
+  } else if (err && ["network", "no-token", "timeout"].includes(o.kind)) {   // nothing came back from Google
+    const [note, line] = {
+      network: ["threw a network error", "generate() threw a network error (nothing came back)"],
+      "no-token": ["threw an App Check error", "generate() threw an App Check error before sending anything"],
+      timeout: ["timed out", "generate() threw a timeout error: no reply in time"],
+    }[o.kind];
+    steps = [["r-gemini", "skip"], ["r-ailogic", "skip"], ["r-generate", "error", note, line],
       ["r-respond", "done", "caught → friendlyError(err)", "respond() caught it; friendlyError(err) turned it into a friendly message"]];
   } else if (err) {
     steps = [

@@ -304,8 +304,8 @@ function drawCar(g, x, y, a, lift = 0) {
   wheels(near);
 }
 
-/** A tag (rounded label) that floats above a moving thing. kind: "you", "bot", "lock", "err", "ok"; "" text hides it. */
-function makeTag(parent, s = 1) {
+/** A tag (rounded label) that floats above a moving thing. kind: "you", "bot", "lock", "err", "ok", "key"; "" text hides it. */
+export function makeTag(parent, s = 1) {
   const g = svg("g", { class: "st-tag" }, parent);
   const rect = svg("rect", { height: 40 * s, rx: 12 * s, y: -26 * s }, g);
   const text = label(g, 0, -6 * s, "", "tg", "middle", 20 * s);
@@ -566,7 +566,7 @@ export function player() {
 const MATERIALS = {
   slab: ["--ground", "--soil1", "--soil2"], cloud: ["--cg", "--cs1", "--cs2"], wall: ["--w1", "--w2", "--w3"],
   gwall: ["--gw1", "--gw2", "--gw3"], roof: ["--r1", "--r2", "--r3"], booth: ["--o1", "--o2", "--o3"],
-  brick: ["--k1", "--k2", "--k3"], bridge: ["--br1", "--br2", "--br3"], tube: ["--tube", "--tube", "--tube"],
+  brick: ["--k1", "--k2", "--k3"], bridge: ["--br1", "--br2", "--br3"], steel: ["--st1", "--st2", "--st3"],
 };
 
 const CSS = `
@@ -574,7 +574,7 @@ const CSS = `
   --cg:#d3e3f5; --cs1:#9fb3d3; --cs2:#889dc2; --gw1:#ffffff; --gw2:#e6edf8; --gw3:#cdd8ec;
   --w1:#fffcf5; --w2:#efe5d2; --w3:#dccdb0; --r1:#e6d3b0; --r2:#d6c098; --r3:#c4aa7f;
   --o1:#efae8c; --o2:#d37a50; --o3:#b0603a; --k1:#c3ae92; --k2:#a99377; --k3:#8e7a60;
-  --br1:#d9d4cc; --br2:#bdb6aa; --br3:#a39b8e; --tube:rgba(79,123,192,.14);
+  --br1:#d9d4cc; --br2:#bdb6aa; --br3:#a39b8e; --st1:#8c86a6; --st2:#6e6890; --st3:#5a5579; --cloud:rgba(255,255,255,.75);
   --glass:#bcd0ef; --lamp:#ffd36b; --leaf:#6fae6c; --leaf2:#97cb93; --trunk:#8a6a4a; --smoke:#d8d2c8; --lock:#3b3550;
   background: var(--card); color: var(--ink); border: 3px solid var(--ink); border-radius: 22px; box-shadow: 6px 6px 0 var(--ink);
   padding: 14px 16px 12px; }
@@ -582,7 +582,7 @@ const CSS = `
   .street { --ground:#33402c; --soil1:#2a221b; --soil2:#211a14; --road:#4a5262; --mark:#cfc6b6; --walk:#4a453d; --edge:rgba(0,0,0,.55);
     --cg:#2c3546; --cs1:#222a38; --cs2:#1b2230; --gw1:#4a5468; --gw2:#3c4557; --gw3:#313949;
     --w1:#5a4b3d; --w2:#4a3d31; --w3:#3c3128; --r1:#6b5845; --r2:#5a4a3a; --r3:#4b3d30; --glass:#4f6a95; --leaf:#3f7a3e; --leaf2:#5a965a;
-    --br1:#5a554e; --br2:#48443e; --br3:#3a3732; --smoke:#9a9186; --tube:rgba(120,160,230,.12); }
+    --br1:#5a554e; --br2:#48443e; --br3:#3a3732; --smoke:#9a9186; --st1:#8f89ad; --st2:#77719a; --st3:#625d82; --cloud:rgba(205,220,255,.16); }
 }
 .street h2 { margin: 0 0 2px; font-size: 1.05rem; }
 .st-hint { margin: 0 0 8px; font-size: .85rem; color: var(--muted); }
@@ -625,7 +625,15 @@ const CSS = `
 }
 .st-scene polygon { stroke: var(--edge); stroke-width: 1.2; stroke-linejoin: round; }
 ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t}); } .st-${m} .l { fill: var(${l}); } .st-${m} .r { fill: var(${r}); }`).join("\n")}
-.st-tube polygon { stroke: rgba(79,123,192,.45); }
+.st-cable { fill: none; stroke: var(--st3); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+.st-hanger { stroke: var(--st2); stroke-width: 1.4; } .st-truss { fill: none; stroke: var(--br3); stroke-width: 1.6; stroke-linejoin: round; }
+.st-bsign rect { fill: var(--lock); stroke: var(--ink); stroke-width: 2; transition: fill .3s; }
+.st-bsign text { fill: #fff8ec; font-weight: 900; letter-spacing: .12em; dominant-baseline: middle; }
+.st-bsign.enc rect { fill: var(--you); } .st-bsign.dec rect { fill: var(--ok, #5c8d55); }
+.st-https.bad .st-bsign rect { fill: var(--warn, #b14d44); }
+.st-tag.key rect { fill: var(--lamp); } .st-tag.key .tg { fill: #241b15; }
+.st-sky { fill: var(--muted); font-weight: 800; font-style: italic; paint-order: stroke; stroke: var(--card); stroke-width: 6px;
+  stroke-linejoin: round; }
 .st-walkway, .st-edgeband, .st-asphalt, .st-centre { fill: none; stroke-linejoin: round; }
 .st-walkway { stroke: var(--walk); } .st-walkway-cap { fill: var(--walk); }
 .st-edgeband { stroke: var(--mark); } .st-edgeband-cap { fill: var(--mark); }
@@ -670,11 +678,11 @@ ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t
 .st-row.check circle { fill: var(--lamp); } .st-row.yes circle { fill: var(--ok, #5c8d55); } .st-row.yes .rm { fill: var(--ok, #5c8d55); }
 .st-row.stop circle { fill: var(--warn, #b14d44); } .st-row.stop .rm { fill: var(--warn, #b14d44); }
 .st-row.no circle { fill: var(--muted); } .st-row.skip { opacity: .35; }
-.st-legend .lg { font-weight: 800; } .st-legend .you { fill: var(--you); } .st-legend .bot { fill: var(--bot); }
+.st-legend .lg { font-weight: 800; fill: var(--ink); } .st-legend .you { fill: var(--you); } .st-legend .bot { fill: var(--bot); }
 .st-spark { fill: var(--lamp); stroke: var(--ink); stroke-width: 2; transform-box: fill-box; transform-origin: center; }
 .busy .st-spark { animation: st-spin 1.2s linear infinite; }
 @keyframes st-spin { to { transform: rotate(360deg); } }
-.st-cloud { fill: #fff; opacity: .75; }
+.st-cloud { fill: var(--cloud); }
 .st-drone .shadow { fill: rgba(0, 0, 0, .16); }
 .st-drone .arm { stroke: #2b2b30; stroke-width: 3; }
 .st-drone .core { fill: #2b2b30; stroke: var(--ink); stroke-width: 1.5; } .st-drone .eye { fill: var(--lamp); }
@@ -700,6 +708,7 @@ ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t
   background: color-mix(in srgb, var(--lamp) 14%, var(--card)); }
 .st-debug .st-label { margin: 0; font-weight: 900; }
 .st-life { margin: 4px 0 0; }
+.st-tls { background: color-mix(in srgb, var(--you) 10%, var(--card)); }
 .st-pad { fill: #4a4a50; stroke: var(--lamp); stroke-width: 3; } .st-padh { fill: var(--lamp); font-weight: 900; }
 .st-banner .bt { font-weight: 900; letter-spacing: .08em; fill: var(--ink); } .st-banner .bs { font-weight: 700; fill: var(--muted); }
 .st-vault { fill: #6b6f7a; }

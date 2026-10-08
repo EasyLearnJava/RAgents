@@ -2,24 +2,26 @@
  * EXTRA: a teaching aid, not part of the agent.
  *
  * "Street view" of step 2: unlike step 1, your message really leaves your computer. The car drives it through your
- * browser (the form, index.html, agent.js's checks, main.js), across the internet on an HTTPS bridge (where its
- * tag turns to scrambled text: encrypted), into Google Cloud: App Check's gate, Firebase AI Logic (which adds the
- * Gemini key) and Gemini. Then it brings the reply back the same way.
+ * browser (the form, index.html, agent.js's checks, main.js), over the HTTPS bridge (a suspension bridge across the
+ * internet's clouds), into Google Cloud: App Check's gate, Firebase AI Logic (which adds the Gemini key) and Gemini.
+ * Then it brings the reply back the same way. At the bridge's entrance the message is encrypted (the sign lights up,
+ * the TLS session key shows and the tag scrambles), and at the far end it's decrypted with the same key. What Google
+ * sends back (the reply, or an error status) gets the same treatment the other way; after a timeout nothing comes
+ * back. A panel under the scene says what does the encrypting and how to see it.
  *
  * It follows what really happens: agent.js reports each stage (the same events as the box diagram), so a message
  * that's too long turns back inside your browser, a 403 stops at App Check's gate, and the car waits at Gemini for
  * the real reply. The network log under the scene lists the page's real requests (Resource Timing).
  *
- * App Check tokens get their own courier drone, because fetching one is a separate trip to Google:
- * - on page load the Firebase SDK fetches a token straight away (initializeAppCheck with auto-refresh) and caches it;
- * - for each message it fetches a fresh single-use token (useLimitedUseAppCheckTokens), which travels with the request.
- * The drone shows the real result of each token request (its HTTP status, from Resource Timing). If the token request
- * fails (locally: an unregistered debug token comes back 403), the SDK throws before sending anything, so the car
- * turns back at main.js: the message never leaves your browser.
+ * App Check tokens get their own courier drone, because fetching one is a separate trip to Google: for each message
+ * the Firebase SDK fetches a fresh single-use token (useLimitedUseAppCheckTokens), which travels with the request.
+ * main.js keeps no cached token (auto-refresh is off), so nothing is fetched on page load. The drone shows the real
+ * result of each token request (its HTTP status, from Resource Timing). If the request fails (locally: an unregistered
+ * debug token comes back 403), or the SDK doesn't even ask (after a 403 it holds off until the page is reloaded), the
+ * SDK throws before sending anything, so the car turns back at main.js: the message never leaves your browser.
  *
- * The token board above your browser shows the two tokens side by side: the cached 🎫 (page load; its expiry counts
- * down, from main.js's optional {type: "token"} event, which carries only the times) and the single-use 🎟️ that rides
- * with each message. Its third row is what proves the page to App Check: locally the debug token, live reCAPTCHA.
+ * The token board above your browser shows the single-use 🎟️ that rides with each message, and what proves the page
+ * to App Check: locally the debug token, live reCAPTCHA.
  * Locally, a panel under the scene explains the debug token: where and when it's made, what it's for, how long it lasts.
  *
  *   street.start   a new message was sent        street.event   pass agent.js's stage events here
@@ -39,15 +41,23 @@ const S = 1.2;
 /** The road: through your browser, round a bend, straight over the internet bridge, then through Google Cloud. */
 const ROAD = [[-6, 45], [6, 45], [20, 46], [32, 49], [46, 49], [60, 46], [74, 45], [86, 46], [96, 43], [103, 35], [105, 24],
   [105, 12], [105, 0], [105, -12], [105, -24], [104, -36], [101, -48], [100, -60], [102, -72], [103, -82]];
-/** Where the car stops (points on the road; the lane is found from them). */
+/**
+ * Where the car stops (points on the road; the lane is found from them). The bridge's encrypt/decrypt stops (bridge,
+ * farEnd, landing) keep the car's tag clear of the portal signs.
+ */
 const STOP = { house: [8, 45], gate: [16.5, 45.8], depot: [37, 48.5], agent: [58, 46.5], main: [80, 45.5],
-  bridge: [105, 12], google: [105, -18], appcheck: [105, -22.5], ailogic: [102.5, -46], gemini: [101.5, -70] };
+  bridge: [105, 12], farEnd: [105, -9.5], landing: [105, 20], appcheck: [105, -22.5], ailogic: [102.5, -46], gemini: [101.5, -70] };
 
 const TRACK = [
   ["Typed", "You"], ["Submit", "<form>"], ["onSend(e)", "index.html"], ["respond()", "agent.js checks"], ["generate()", "main.js"],
-  ["HTTPS", "the internet"], ["App Check", "Google"], ["AI Logic", "Google"], ["Gemini", "Google"], ["Back", "to your browser"], ["Shown", "You"],
+  ["HTTPS", "encrypt → decrypt"], ["App Check", "Google"], ["AI Logic", "Google"], ["Gemini", "Google"], ["Back", "to your browser"], ["Shown", "You"],
 ];
 const GOOGLE_STEPS = [4, 5, 6, 7, 8];
+
+/** The HTTPS bridge: its two pairs of towers (y), their height, the cable's lowest point, and its far and near side (x). */
+const TOWERS = [-15, 9], TOWER_TOP = 16, SAG = 3, SIDES = [95.2, 114.8];
+/** The main cable's height at y: a parabola from tower top to tower top, lowest half-way. */
+const cableZ = (y) => SAG + (TOWER_TOP - SAG) * ((2 * y - TOWERS[0] - TOWERS[1]) / (TOWERS[1] - TOWERS[0])) ** 2;
 const RULES = ['text === ""', "text.length > 500", "→ generate(text)"];
 
 /** On localhost / 127.0.0.1 main.js uses App Check's debug token instead of reCAPTCHA. */
@@ -58,28 +68,32 @@ const DRONE_HOME = [84.5, 29.5, 11], DRONE_GATE = [99, -29, 9];
 
 const quote = (s, max) => `“${s.length > max ? s.slice(0, max - 1) + "…" : s}”`;
 const SYMS = "#%&@$!?*+=~^xXqQkKzZ9786";
-/** What the message looks like on the wire: scrambled (a stand-in for real ciphertext). */
-const scramble = (s) => "🔒 " + Array.from(s.slice(0, 12).padEnd(8, "."), (c, i) => SYMS[(c.charCodeAt(0) * 7 + i * 13) % SYMS.length]).join("");
+/** What text looks like on the wire: every character scrambled (a stand-in for real ciphertext), spaces kept. */
+const scramble = (s) => Array.from(s, (c, i) => (c === " " ? " " : SYMS[(c.codePointAt(0) * 7 + i * 13) % SYMS.length])).join("");
 
 // ---------- The scene ----------
 
 function build() {
   t.ensureStyles();
   const ui = card("Street view: your message leaves the browser",
-    "The car carries your message out of your browser, over the internet (HTTPS) and into Google Cloud, then brings the reply back. " +
-    "It stops where each piece runs and follows what really happens, including errors. The drone fetches App Check tokens: once when " +
-    "the page loads, and a fresh single-use one before each message. The real round trip takes about a second; everything is slowed down.", "Street view of one message's trip to Gemini and back");
+    "The car carries your message out of your browser, over the HTTPS bridge across the internet and into Google Cloud, then " +
+    "brings the reply back. It stops where each piece runs and follows what really happens, including errors. The drone fetches a " +
+    "fresh single-use App Check token before each message. The real round trip takes about a second; everything is slowed down.",
+    "Street view of one message's trip to Gemini and back");
+  performance.setResourceTimingBufferSize?.(1000);   // the network log and the token checks read it; the default keeps 250
 
   const root = svg("svg", { class: "st-scene st-framed", viewBox: "-580 -360 2340 1090", role: "img",
     "aria-label": "Your browser and Google Cloud as two pieces of land joined by an internet bridge; a car carries the message between them" });
 
-  // Land: Google Cloud (far), clouds and the internet bridge, your browser (near). Then the road over all of it.
+  // Land: Google Cloud (far), the internet's clouds with the HTTPS bridge over them, your browser (near). Then the road.
   box(root, [60, -98, -2.5], [58, 80, 2.5], "cloud");
-  for (const [x, y, z, r] of [[88, -6, -9, 30], [122, 4, -7, 36], [97, -15, -12, 24], [122, -14, -10, 28], [86, 8, -8, 22]]) {
+  for (const y of TOWERS) for (const x of SIDES) box(root, [x - 1, y - 1, -15], [2, 2, 12.6], "steel");   // piers under the towers
+  for (const [x, y, z, r] of [[88, -6, -9, 30], [122, 4, -7, 36], [97, -15, -12, 24], [122, -14, -10, 28], [86, 8, -8, 22],
+    [101, -15, -15, 26], [112, -15, -15, 22], [101, 9, -15, 24], [113, 9, -15, 28]]) {
     const [cx, cy] = iso(x, y, z);
     svg("ellipse", { class: "st-cloud", cx, cy, rx: r * 1.6, ry: r * 0.8 }, root);
   }
-  box(root, [95, -18, -1.5], [20, 30, 1.5], "bridge");
+  bridgeBack(root);
   box(root, [-8, 12, -2.5], [124, 50, 2.5], "slab");
   const center = curve(ROAD), lane = lanes(center);
   road(root, center, { capEnd: true });
@@ -142,16 +156,18 @@ function build() {
   const car = vehicle(depth, tags, S);
   const drone = courier(tags, S);
 
-  // The HTTPS tunnel over the bridge (see-through, drawn over the car), then labels.
-  box(top, [95.6, -17, 0], [18.8, 28, 6.5], "tube");
+  // The front of the HTTPS bridge (always in front of the car), what's under it, then labels.
+  const bridge = bridgeFront(top, tags);
+  b.bridge = bridge.g;
+  const [skyX, skyY] = iso(124, -2, -12);
+  t.label(top, skyX, skyY, "the internet", "st-sky", "middle", 30);
   const pins = {
     house: pin(top, [8, 26, 12.6], "You", "the chat page", S),
     gate: pin(top, [23, 35.4, 6.4], '<form id="form">', '"submit" event', S),
     depot: pin(top, [37, 26, 9.5], "index.html", "onSend(e) · add()", S, 100),
     agent: pin(top, [58, 26, 11.5], "agent.js", "respond(): checks", S, 40),
     main: pin(top, [79, 24, 12], "main.js", "generate() + App Check token", S),
-    bridge: pin(top, [105, -3, 7], "the internet", "HTTPS: encrypted 🔒", S),
-    appcheck: pin(top, [93, -29, 6.5], "App Check", "is the token valid?", S),
+    appcheck: pin(top, [93, -29, 6.5], "App Check", "is the token valid?", S, 24),
     ailogic: pin(top, [80, -47, 12.5], "Firebase AI Logic", "adds the Gemini key 🔑", S),
     gemini: pin(top, [77, -81, 16], "Gemini", MODEL, S),
   };
@@ -159,11 +175,12 @@ function build() {
   banner(top, -560, 560, "YOUR BROWSER TAB", "your computer: everything on this land runs here");
   banner(top, 1330, 360, "GOOGLE CLOUD", "Google's servers");
   root.append(tags);
-  const legend = svg("g", { class: "st-legend", transform: "translate(1180 560)" }, top);
+  const legend = svg("g", { class: "st-legend", transform: "translate(1180 520)" }, top);
   t.label(legend, 0, 0, "→ near lane: your message", "lg you", "start", 30);
   t.label(legend, 0, 44, "← far lane: the reply", "lg bot", "start", 30);
-  t.label(legend, 0, 88, "🔒 tag = encrypted on the wire", "lg", "start", 30);
-  t.label(legend, 0, 132, "drone = App Check token request", "lg", "start", 30);
+  t.label(legend, 0, 88, "🔒 tag = encrypted on the internet", "lg", "start", 30);
+  t.label(legend, 0, 132, "🔑 = TLS session key (both ends)", "lg", "start", 30);
+  t.label(legend, 0, 176, "drone = App Check token request", "lg", "start", 30);
   const tokens = tokenBoard(top, [-110, -350]);
 
   // Tracker, narration and the network log.
@@ -174,8 +191,9 @@ function build() {
   const list = el("ol", "st-log");
   log.append(head, list, el("p", "st-note", "From your browser's own record (Resource Timing). Hosts ending in googleapis.com are Google Cloud; " +
     "the App Check token comes from reCAPTCHA and App Check before each model call."));
+  const tls = tlsPanel();
   const debug = LOCAL ? debugPanel() : null;
-  ui.card.append(root, track.el, ui.now, ...(debug ? [debug.el] : []), log);
+  ui.card.append(root, track.el, ui.now, tls.el, ...(debug ? [debug.el] : []), log);
   document.body.append(ui.card);        // style.css gives it its own row under the chat
 
   const sOut = (p) => lane.sOut(...p);
@@ -183,7 +201,7 @@ function build() {
   ui.replay.addEventListener("click", () => { if (lastRun) run({ ...lastRun, replay: true }); });
   ui.pace.addEventListener("click", () => { ui.pace.textContent = play.cycle(); });
   return {
-    car, drone, lane, center, play, ui, rules, track, formArm, checkArm, sOut, tokens, debug,
+    car, drone, lane, center, play, ui, rules, track, formArm, checkArm, sOut, tokens, debug, bridge, tls,
     stop(i, where, skipped = []) {
       for (const [k, g] of Object.entries(b)) { g.classList.toggle("on", k === where); g.classList.remove("bad"); }
       for (const [k, p] of Object.entries(pins)) { p.classList.toggle("on", k === where); p.classList.remove("bad"); }
@@ -210,23 +228,24 @@ function build() {
     reset() {
       car.place(lane.out, sOut(STOP.house)); car.carry("", "you"); formArm(0); checkArm(0);
       drone.place(...DRONE_HOME); drone.carry("");
+      for (const end of ["near", "far"]) { bridge.sign(end, ""); bridge.key(end, ""); }
+      tls.upTo(-1);
       this.busy(false); this.sending(false); this.stop(-1, null); rules.reset();
     },
   };
 }
 
 /**
- * The token board above your browser: the cached token, the single-use one, and what proves the page to App Check
+ * The token board above your browser: the single-use token, and what proves the page to App Check
  * (locally the debug token, live reCAPTCHA). set(row, status, kind) updates a row; kind: "ok", "bad", "wait", "used".
  */
 function tokenBoard(parent, [x, y]) {
   const W = 960, g = svg("g", { class: "st-board", transform: `translate(${x} ${y})` }, parent);
-  svg("rect", { width: W, height: 258, rx: 18 }, g);
+  svg("rect", { width: W, height: 200, rx: 18 }, g);
   t.label(g, 24, 42, "App Check tokens in this browser", "tt", "start", 30);
   const spec = [
-    ["🎫", "Cached token", "made on page load · renewed automatically · NOT sent with your messages"],
     ["🎟️", "Single-use token", "a new one for every message · rides with it · spent when Google checks it"],
-    LOCAL ? ["🔑", "Debug token (the proof)", "this browser's ID for local testing · swapped for the tokens above · never expires"]
+    LOCAL ? ["🔑", "Debug token (the proof)", "this browser's ID for local testing · swapped for the token above · never expires"]
       : ["🤖", "reCAPTCHA token (the proof)", "made fresh for each token request · only works on the allowed domains"],
   ];
   const rows = spec.map(([icon, name, note], i) => {
@@ -237,7 +256,7 @@ function tokenBoard(parent, [x, y]) {
     return { row, status };
   });
   const set = (i, text, kind = "") => { rows[i].status.textContent = text; rows[i].row.setAttribute("class", "st-trow " + kind); };
-  set(0, "none yet"); set(1, "none yet"); set(2, LOCAL ? "checking…" : "—");
+  set(0, "none yet"); set(1, LOCAL ? "checked on your first message" : "—");
   return { set };
 }
 
@@ -250,7 +269,7 @@ function debugPanel() {
     ["Stored", `in this browser's storage (IndexedDB) for ${location.host}, so every reload uses the same one.`],
     ["Printed", 'in the browser console on every load: F12 → Console, filter "debug token".'],
     ["Registered", "by you, once: Firebase console → App Check → Apps → ragents-web → ⋮ → Manage debug tokens → Add."],
-    ["Used", "on every token trip: shown to App Check instead of reCAPTCHA and swapped for the 🎫 and 🎟️ tokens."],
+    ["Used", "on every token trip: shown to App Check instead of reCAPTCHA and swapped for a 🎟️ token, once per message."],
   ];
   const ol = el("ol", "st-steps");
   const items = steps.map(([title, text], i) => {
@@ -262,7 +281,7 @@ function debugPanel() {
   const state = el("span", "state", "");
   items[3].append(state);
   box.append(ol, el("p", "st-life", "Lifespan: the debug token itself never expires. It lasts until you delete it in the Firebase console " +
-    "or clear this site's data; another browser, profile or address makes a new one. The 🎫 and 🎟️ tokens it gets do expire. " +
+    "or clear this site's data; another browser, profile or address makes a new one. The 🎟️ tokens it gets are spent on first use. " +
     "Keep it secret: while it's registered, anyone who has it can pass App Check from any machine."));
   for (const li of items.slice(0, 3)) li.className = "done";
   return {
@@ -281,15 +300,118 @@ function showProof(st, r) {
   if (!r || r.status === 0) return;
   const ok = r.status === 200;
   if (LOCAL) {
-    st.tokens.set(2, ok ? "✓ registered" : `✕ not registered (${r.status})`, ok ? "ok" : "bad");
+    st.tokens.set(1, ok ? "✓ registered" : `✕ not registered (${r.status})`, ok ? "ok" : "bad");
     st.debug?.registered(ok);
-  } else st.tokens.set(2, ok ? "✓ reCAPTCHA vouched" : `✕ refused (${r.status})`, ok ? "ok" : "bad");
+  } else st.tokens.set(1, ok ? "✓ reCAPTCHA vouched" : `✕ refused (${r.status})`, ok ? "ok" : "bad");
 }
 
-/** "mm:ss" (or "h:mm:ss") until `ms`. */
-function countdown(ms) {
-  const s = Math.max(0, Math.round((ms - Date.now()) / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return `${h ? h + ":" + String(m).padStart(2, "0") : m}:${String(s % 60).padStart(2, "0")}`;
+/** One side of the HTTPS bridge at x: two towers, the main cable with its backstays, and the hangers. */
+function bridgeSide(parent, x) {
+  for (const y of TOWERS) box(parent, [x - 0.7, y - 0.7, 0], [1.4, 1.4, TOWER_TOP], "steel");
+  const cable = [[x, -18, 1.4]];
+  for (let y = TOWERS[0]; y <= TOWERS[1]; y++) cable.push([x, y, cableZ(y)]);
+  cable.push([x, 12, 1.4]);
+  svg("polyline", { class: "st-cable", points: t.pts(...cable) }, parent);
+  for (let y = TOWERS[0] + 3; y < TOWERS[1]; y += 3) svg("line", { class: "st-hanger", ...lineAt([x, y, cableZ(y)], [x, y, 1.4]) }, parent);
+}
+
+/** The back of the HTTPS bridge, behind the car: the deck with its truss, and the far side's towers and cable. */
+function bridgeBack(parent) {
+  box(parent, [95, -18, -2.4], [20, 30, 2.4], "bridge");
+  const truss = [];
+  for (let i = 0; i <= 12; i++) truss.push([115, -18 + i * 2.5, i % 2 ? -0.3 : -2.1]);
+  svg("polyline", { class: "st-truss", points: t.pts(...truss) }, parent);
+  bridgeSide(parent, SIDES[0]);
+}
+
+/**
+ * The front of the HTTPS bridge, always in front of the car: a portal over the road at each pair of towers ("near" at
+ * your browser's end, "far" at Google's) with a sign on the side you see, then the near side's towers and cable.
+ * g is its group (it turns red on a network error); sign() and key() show what each end is doing.
+ */
+function bridgeFront(parent, tags) {
+  const g = svg("g", { class: "st-https" }, parent);
+  const [x0, x1] = [SIDES[0] - 0.7, SIDES[1] + 0.7], w = (x1 - x0) * t.K, h = 4 * t.K;
+  const ends = {};
+  for (const [end, y] of [["far", TOWERS[0]], ["near", TOWERS[1]]]) {
+    box(g, [x0, y - 0.7, TOWER_TOP - 4], [x1 - x0, 1.4, 4], "steel");
+    const [ex, ey] = iso(x0, y + 0.7, TOWER_TOP);       // the sign lies on the portal's +y face: x runs along it, z up
+    const sign = svg("g", { class: "st-bsign", transform: `matrix(1 0.5 0 1 ${ex.toFixed(1)} ${ey.toFixed(1)})` }, g);
+    svg("rect", { x: 6, y: 4, width: w - 12, height: h - 8, rx: 6 }, sign);
+    const text = t.label(sign, w / 2, h / 2 + 1, "HTTPS 🔒", "", "middle", 19);
+    const key = t.makeTag(tags, S);                     // the session key, shown above the sign while that end is at work
+    const [dx, dy, dz] = end === "near" ? [0, 0, 3] : [2, -3, 4.5];   // the far one sits higher, clear of the car's tag
+    key.at(...iso((x0 + x1) / 2 + dx, y + dy, TOWER_TOP + dz));
+    key.carry("");
+    ends[end] = { sign, text, key };
+  }
+  bridgeSide(g, SIDES[1]);
+  return {
+    g,
+    /** One end's sign: kind "enc" (encrypting), "dec" (decrypting), or "" for the resting "HTTPS 🔒". */
+    sign(end, text, kind = "") {
+      ends[end].text.textContent = text || "HTTPS 🔒";
+      ends[end].sign.setAttribute("class", `st-bsign ${kind}`.trim());
+    },
+    /** Shows the session key above one end ("" hides it). */
+    key(end, text) { ends[end].key.carry(text, "key"); },
+  };
+}
+
+/**
+ * One end of the HTTPS bridge encrypts or decrypts `words` (the car's tag): its sign lights up, the session key shows
+ * above it, and the tag turns into scrambled text (encrypt) or back into words (decrypt), a character at a time.
+ * After a decrypt the crossing is over, so both signs rest again.
+ */
+async function crypt(st, tw, end, mode, words, kind = "you") {
+  const enc = mode === "enc";
+  st.bridge.sign(end, enc ? "🔒 ENCRYPT" : "🔓 DECRYPT", mode);
+  st.bridge.key(end, end === "near" ? "🔑 session key" : "🔑 same session key");
+  const open = Array.from("🔓 " + words), locked = Array.from("🔒 " + scramble(words));
+  const [from, to] = enc ? [open, locked] : [locked, open];
+  await tw.tween(1100, (e, p) => {
+    const n = Math.round(p * to.length);
+    st.car.carry(to.slice(0, n).join("") + from.slice(n).join(""), enc || n < to.length ? "lock" : kind);
+  });
+  await tw.wait(800);
+  st.bridge.key(end, "");
+  if (!enc) {
+    st.car.carry(words, kind);
+    for (const e of ["near", "far"]) st.bridge.sign(e, "");
+  }
+}
+
+/** Under the scene: what the HTTPS bridge uses to encrypt and decrypt, step by step (they light up as the car passes). */
+function tlsPanel() {
+  const box = el("div", "st-debug st-tls");
+  box.append(el("p", "st-label", "🔒 The HTTPS bridge: what encrypts and decrypts your message"));
+  const steps = [
+    ["Handshake", "when your browser first connects, it checks Google's certificate (proof it's really Google) and the two sides " +
+      "agree on a secret session key (key exchange: X25519, plus ML-KEM in newer Chrome). The key itself never crosses the internet."],
+    ["Encrypt", "at the bridge's near end your browser's TLS encrypts the request with that key, usually with AES-128-GCM, which " +
+      "also seals it: any change on the way is detected."],
+    ["Cross", "on the internet it's scrambled bytes. Wi-Fi, your provider and routers can see which server and roughly how big, " +
+      "never the words."],
+    ["Decrypt", "Google's front door has the same session key, so it decrypts the request. HTTPS ends there: App Check, AI Logic " +
+      "and Gemini get it in plain form."],
+    ["Reply", "comes back over the same bridge: Google encrypts it with the key and your browser decrypts it."],
+  ];
+  const ol = el("ol", "st-steps");
+  const items = steps.map(([title, text], i) => {
+    const li = el("li"); li.dataset.n = String(i + 1);
+    li.append(el("b", "", title), text);
+    ol.append(li);
+    return li;
+  });
+  box.append(ol, el("p", "st-life", "See the real ones: F12 → Security (\"Privacy and security\" in newer Chrome) → " +
+    "firebasevertexai.googleapis.com shows something like \"TLS 1.3, X25519MLKEM768, AES_128_GCM\". The page's own code can't " +
+    "read them. Behind a company proxy that inspects HTTPS (like Zscaler) there are two bridges, your browser ↔ the proxy and " +
+    "the proxy ↔ Google, and the proxy decrypts in between."));
+  return {
+    el: box,
+    /** Marks steps 0…i done (-1 clears them). */
+    upTo(i) { items.forEach((li, j) => { li.className = j <= i ? "done" : ""; }); },
+  };
 }
 
 /** Two world points (with z) → a line's x1/y1/x2/y2 attributes. */
@@ -304,12 +426,20 @@ function lineAt(a, b) {
 const tokenRequests = (t0) => performance.getEntriesByType("resource")
   .filter((e) => e.startTime >= t0 && /firebaseappcheck\.googleapis\.com\/.+:exchange/.test(e.name));
 
-/** Waits up to `ms` for a token exchange that started after t0. Returns { status, debug } (status 0 = hidden) or null. */
-async function tokenResult(tw, t0, ms) {
-  const until = performance.now() + ms;
+/** Requests to Firebase AI Logic (your message itself) the page started since t0. */
+const modelRequests = (t0) => performance.getEntriesByType("resource")
+  .filter((e) => e.startTime >= t0 && e.name.includes("firebasevertexai.googleapis.com"));
+
+/**
+ * Waits up to `ms` for a token exchange that started after t0, or less once `settled()` says the model call is over
+ * (any token request would show by then). Returns { status, debug } (status 0 = hidden) or null.
+ */
+async function tokenResult(tw, t0, ms, settled) {
+  let until = performance.now() + ms;
   for (;;) {
     const e = tokenRequests(t0).at(-1);
     if (e) return { status: e.responseStatus || 0, debug: e.name.includes("exchangeDebugToken") };
+    if (settled?.()) until = Math.min(until, performance.now() + 400);
     if (performance.now() > until) return null;
     await new Promise((r) => setTimeout(r, 150));
     tw.alive();
@@ -323,45 +453,20 @@ const tokenOk = (r) => !r || r.status === 0 || r.status === 200;
  * The courier's round trip for a token: fly to App Check's gate, wait for the real result (or show the recorded
  * one on a replay), show it, fly home. Returns the result.
  */
-async function fetchToken(st, tw, t0, icon, label, recorded) {
+async function fetchToken(st, tw, t0, icon, label, recorded, settled) {
   const { drone } = st;
-  drone.place(...DRONE_HOME); drone.carry(label, "you");
+  drone.place(...DRONE_HOME); drone.carry("🔒 " + label, "lock");     // a request of its own, over HTTPS: locked in flight
   await drone.fly(tw, DRONE_GATE);
-  const r = recorded !== undefined ? recorded : await tokenResult(tw, t0, 6000);
-  const ok = tokenOk(r);
-  drone.carry(ok ? (r ? `${icon} token` : `${icon} ?`) : `✕ ${r.status}`, ok ? "ok" : "err");
+  const r = recorded !== undefined ? recorded : await tokenResult(tw, t0, 6000, settled);
+  const ok = tokenOk(r), result = ok ? (r ? `${icon} token` : `${icon} ?`) : `✕ ${r.status}`;
+  drone.carry(result, ok ? "ok" : "err");
   if (!ok) st.bad("appcheck");
   showProof(st, r);
   await tw.wait(800);
+  drone.carry("🔒 " + result, "lock");
   await drone.fly(tw, DRONE_HOME);
+  drone.carry(result, ok ? "ok" : "err");
   return r;
-}
-
-/** On page load the SDK fetches (and caches) a token before you type anything; the courier shows that trip. */
-async function pageLoadToken() {
-  const st = scene, tw = st.play.begin();
-  try {
-    st.stop(null, "main");
-    st.say("Page load: the Firebase SDK starts App Check and asks Google for a token (🎫) straight away, before you type anything. " +
-      "The drone fetches it…");
-    if (!cached.expiresAt) st.tokens.set(0, "fetching…", "wait");
-    const r = await fetchToken(st, tw, 0, "🎫", "page load: 🎫?");
-    if (!cached.expiresAt) {
-      if (r && !tokenOk(r)) st.tokens.set(0, `✕ refused (${r.status})`, "bad");
-      else if (!r) st.tokens.set(0, "none yet");
-    }
-    st.stop(null, null);
-    st.drone.carry(tokenOk(r) ? "🎫 cached" : `✕ ${r.status}`, tokenOk(r) ? "ok" : "err");
-    st.say(!r ? "Page load: no App Check token request yet (the SDK fetches one when it first needs it)."
-      : r.status === 200 ? "Page load: App Check issued a token (🎫) and the SDK cached it; the board shows when it expires (it's renewed " +
-        "automatically). Gemini requests don't use it: each message gets its own single-use 🎟️. Send a message to watch."
-      : r.status === 0 ? "Page load: the SDK asked App Check for a token. Send a message to watch the rest."
-      : r.debug ? "Page load: App Check refused this browser's debug token (403): it isn't registered in the Firebase console. " +
-        "Every message will be refused too until it is (see \"Testing on your own machine\" in the step 2 README)."
-      : `Page load: App Check refused the token request (${r.status}).`);
-  } catch (err) {
-    if (err !== t.STOPPED) throw err;
-  }
 }
 
 // ---------- Following the real events ----------
@@ -370,16 +475,6 @@ const scene = typeof document === "undefined" ? null : build();
 let current = null;                              // the message being shown: its events arrive while the car drives
 let lastRun = null;                              // everything about the last message, for Replay
 let firstSend = null;                            // performance.now() of the first message, for the network log
-const cached = { expiresAt: null };              // the cached token's expiry (from main.js's "token" events)
-
-/** Refreshes the cached token's row: a live countdown to its expiry. */
-function showCached() {
-  if (!scene || !cached.expiresAt) return;
-  const left = cached.expiresAt - Date.now();
-  const at = new Date(cached.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  scene.tokens.set(0, left > 0 ? `✓ valid · expires in ${countdown(cached.expiresAt)} (at ${at})` : "expired · being renewed", left > 0 ? "ok" : "wait");
-}
-if (scene) setInterval(showCached, 1000);
 
 /** A promise you resolve later (and that never complains if it's abandoned). */
 function later() {
@@ -399,8 +494,6 @@ function start(text, ready) {
 
 /** agent.js's stage events (createAgent's onEvent): the same ones the box diagram uses. */
 function event(e) {
-  if (e.type === "token") { cached.expiresAt = e.expiresAt || null; showCached(); return; }
-  if (e.type === "token-error") { if (!cached.expiresAt) scene?.tokens.set(0, "✕ refused", "bad"); return; }
   if (!current) return;
   if (e.type === "rejected" || e.type === "accepted") { current.seen.check = e; current.check.resolve(e); }
   else if (e.type.startsWith("model-") && e.type !== "model-start") { current.seen.outcome = e; current.outcome.resolve(e); }
@@ -460,31 +553,44 @@ async function run(msg) {
       } else {
         for (const [i, s] of [[0, "no"], [1, "no"], [2, "yes"]]) { rules.set(i, "check"); await tw.wait(350); rules.set(i, s); }
         await car.drive(tw, st.sOut(STOP.main));
-        leg(4, "main", "generate(text) calls model.generateContent(text). First the Firebase SDK needs a fresh single-use token (🎟️), " +
-          `not the cached 🎫: the drone fetches one (${LOCAL ? "the debug token" : "reCAPTCHA"} vouches for this page, App Check swaps that for a token).`);
+        leg(4, "main", "generate(text) calls model.generateContent(text). First the Firebase SDK needs a fresh single-use token (🎟️): " +
+          `the drone fetches one (${LOCAL ? "the debug token" : "reCAPTCHA"} vouches for this page, App Check swaps that for a token).`);
         st.sending(true);
-        st.tokens.set(1, "fetching one for this message…", "wait");
-        const tok = await fetchToken(st, tw, msg.t0, "🎟️", "single-use 🎟️?", msg.replay ? (msg.seen.token ?? null) : undefined);
+        st.tokens.set(0, "fetching one for this message…", "wait");
+        let tok = await fetchToken(st, tw, msg.t0, "🎟️", "single-use 🎟️?", msg.replay ? (msg.seen.token ?? null) : undefined,
+          () => msg.seen.outcome);
         if (!msg.replay) msg.seen.token = tok;
-        if (!tokenOk(tok)) {
+        if (!tok) {
+          // No token request seen, so wait for the result. An App Check error with no request to Google means the SDK
+          // didn't even ask (after a 403 it holds off until the page is reloaded): nothing left your browser.
+          const out = await got("outcome");
+          if (!msg.replay) msg.seen.sent = modelRequests(msg.t0).length > 0;
+          if (out.type === "model-error" && out.kind === "appcheck" && !msg.seen.sent) tok = { held: true };
+        }
+        if (tok?.held || !tokenOk(tok)) {
           // No valid token: the SDK throws before sending anything, so the message never leaves your browser.
           skipped = [5, 6, 7, 8];
           st.sending(false);
           car.carry(`${typed} 🎟️✕`, "err");
-          st.tokens.set(1, `✕ refused (${tok.status}): message not sent`, "bad");
+          st.drone.carry(tok.held ? "✕ no token" : `✕ ${tok.status}`, "err");
+          st.tokens.set(0, tok.held ? "✕ none: message not sent" : `✕ refused (${tok.status}): message not sent`, "bad");
           reply = await got("reply");
-          leg(4, "main", `No valid App Check token (${tok.status}${tok.debug ? ": this browser's debug token isn't registered" : ""}), ` +
-            "so the Firebase SDK stops here and throws an App Check error. The message is never sent to Google: check the network log.");
+          leg(4, "main", "No valid App Check token: " + (tok.held
+            ? "the SDK didn't even ask, because after a refusal (403) it holds off until the page is reloaded. "
+            : `App Check refused the token request (${tok.status}${tok.debug ? ": this browser's debug token isn't registered" : ""}). `) +
+            "So the Firebase SDK stops here and throws an App Check error. The message is never sent to Google: check the network log.");
           st.bad("main");
           kind = "err"; turnAt = STOP.main;
         } else {
-          leg(4, "main", "Got a single-use token (🎟️). It's attached to the request (the X-Firebase-AppCheck header) and the request leaves. " +
-            "The cached 🎫 stays behind: it isn't used for Gemini.");
-          st.tokens.set(1, "✓ issued · riding with your message", "used");
+          leg(4, "main", "Got a single-use token (🎟️). It's attached to the request (the X-Firebase-AppCheck header) and the request leaves.");
+          st.tokens.set(0, "✓ issued · riding with your message", "used");
+          st.drone.carry("");                          // handed over: the token rides with your message now
           car.carry(`${typed} 🎟️`, "you"); await tw.wait(1200);
           await car.drive(tw, st.sOut(STOP.bridge));
-          leg(5, "bridge", "The request leaves your computer over HTTPS. On the internet it's encrypted: anyone watching sees only scrambled bytes.");
-          car.carry(scramble(msg.text), "lock");
+          leg(5, "bridge", "🔒 Encrypt: before the request leaves your computer, your browser's TLS encrypts it with the session key " +
+            "it agreed with Google (usually AES-128-GCM). On the internet it's only scrambled bytes.");
+          st.tls.upTo(1);
+          await crypt(st, tw, "near", "enc", `${typed} 🎟️`);
           const early = msg.replay ? msg.seen.outcome : current === msg ? msg.seen.outcome : null;
           if (early?.kind === "network") {
             reply = await got("reply");
@@ -492,10 +598,14 @@ async function run(msg) {
             st.bad("bridge");
             kind = "err"; turnAt = STOP.bridge;
           } else {
+            await car.drive(tw, st.sOut(STOP.farEnd));
+            leg(5, "bridge", "🔓 Decrypt: HTTPS ends at Google's front door, which holds the same session key. It turns the bytes " +
+              "back into your request, App Check token and all.");
+            st.tls.upTo(3);
+            await crypt(st, tw, "far", "dec", `${typed} 🎟️`);
             await car.drive(tw, st.sOut(STOP.appcheck)); st.sending(false);
-            leg(6, "appcheck", "HTTPS ends at Google's front door: Google decrypts the request. App Check checks the single-use 🎟️ " +
-              "and marks it spent, so a copy can't be replayed…");
-            car.carry(`${typed} 🎟️`, "you"); await tw.wait(700);
+            leg(6, "appcheck", "App Check checks the single-use 🎟️ and marks it spent, so a copy can't be replayed…");
+            await tw.wait(700);
             const out = await got("outcome");
             if (out.type === "model-error" && (out.kind === "appcheck" || out.kind === "network")) {
               reply = await got("reply");
@@ -505,7 +615,7 @@ async function run(msg) {
               st.bad("appcheck");
               kind = "err"; turnAt = STOP.appcheck;
             } else {
-              st.tokens.set(1, "✓ spent at App Check (can't be reused)", "ok");
+              st.tokens.set(0, "✓ spent at App Check (can't be reused)", "ok");
               await boomTo(st.checkArm, 80);
               await car.drive(tw, st.sOut(STOP.ailogic));
               leg(7, "ailogic", "Firebase AI Logic accepts the token and adds the Gemini API key. The key stays here on Google's side: it never travels to your browser.");
@@ -517,7 +627,9 @@ async function run(msg) {
               if (out.type === "model-ok") leg(8, "gemini", `Gemini answered in ${out.ms} ms (real time). The reply goes back the same way.`);
               else {
                 kind = "err";
-                leg(8, "gemini", out.type === "model-empty" ? "Gemini sent an empty reply." : `Gemini returned an error after ${out.ms} ms (${out.kind}).`);
+                leg(8, "gemini", out.type === "model-empty" ? "Gemini sent an empty reply."
+                  : out.kind === "timeout" ? `No reply after ${Math.round(out.ms / 1000)} s, so the SDK stopped waiting (main.js's time limit).`
+                  : `Gemini returned an error after ${out.ms} ms (${out.kind}).`);
                 st.bad("gemini");
               }
               st.busy(false);
@@ -528,23 +640,38 @@ async function run(msg) {
       }
     }
 
-    // The way back: turn round, cross the internet (encrypted again) if we're in Google, then home.
-    car.carry(quote(reply, 30), kind); await tw.wait(1100);
+    // The way back: turn round, cross the internet (encrypted again) if we're in Google, then home. From Google the car
+    // carries what Google really sent (the reply, or an error status); a friendly error message is written in your
+    // browser, by respond(). After a timeout nothing comes back at all.
+    const o = msg.seen.outcome, inGoogle = turnAt === "end" || turnAt === STOP.appcheck;
+    const wire = !inGoogle ? null : o?.type === "model-ok" ? quote(reply, 30) : o?.type === "model-empty" ? "(an empty reply)"
+      : { appcheck: "✕ 403 refused", quota: "✕ 429 quota used up", busy: "✕ 503 too busy", timeout: "" }[o?.kind] ?? "✕ error";
+    car.carry(inGoogle ? wire || "✕ no reply" : quote(reply, 30), kind); await tw.wait(1100);
     let back;
     if (turnAt === "end") { await car.drive(tw, lane.out.total); back = lane.turnAt(center.p.length - 1, 6); }
     else back = lane.turnAt(center.nearest(...turnAt), 3.6);
     car.place(back.path, 0);
     const home = (p) => back.sAt(...p);
-    if (turnAt === "end" || turnAt === STOP.appcheck) {               // in Google: cross the bridge back
-      await car.drive(tw, home(STOP.google));
-      leg(9, "bridge", "The reply crosses the internet encrypted, just like the request.");
-      car.carry(scramble(reply), "lock");
-      await car.drive(tw, home(STOP.bridge)); car.carry(quote(reply, 30), kind);
+    if (inGoogle && wire) {                                         // cross the bridge back, encrypted
+      const what = o?.type === "model-ok" ? "reply" : "answer";
+      await car.drive(tw, home(STOP.farEnd));
+      leg(9, "bridge", `🔒 Encrypt: Google's front door encrypts the ${what} with the same session key.`);
+      await crypt(st, tw, "far", "enc", wire, kind);
+      await car.drive(tw, home(STOP.landing));
+      leg(9, "bridge", `🔓 Decrypt: back at your computer, your browser decrypts the ${what} with its copy of the key.`);
+      st.tls.upTo(4);
+      await crypt(st, tw, "near", "dec", wire, kind);
+    } else if (inGoogle) {                                          // timeout: the browser gave up, nothing crosses back
+      await car.drive(tw, home(STOP.farEnd));
+      leg(9, "bridge", "Nothing comes back over the bridge: your browser stopped waiting, so there's nothing to decrypt.");
+      await car.drive(tw, home(STOP.landing));
     }
     if (turnAt !== STOP.agent) {
       await car.drive(tw, home(STOP.main));
-      leg(9, "main", kind === "err" ? "generate() throws the error; respond() catches it and friendlyError(err) turns it into a readable message."
+      leg(9, "main", o?.type === "model-empty" ? "generate() returns the empty text; respond() swaps it for a \"please try again\" message."
+        : kind === "err" ? "generate() throws the error; respond() catches it and friendlyError(err) turns it into a readable message."
         : "generate() returns response.text() to respond(), which trims it and returns it.");
+      car.carry(quote(reply, 30), kind);
       await tw.wait(900);
     }
     await car.drive(tw, home(STOP.depot));
@@ -559,7 +686,5 @@ async function run(msg) {
     if (err !== t.STOPPED) throw err;
   }
 }
-
-if (scene) pageLoadToken();
 
 export const street = { start, event, reply, setupProblem };

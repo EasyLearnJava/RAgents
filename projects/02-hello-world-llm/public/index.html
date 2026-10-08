@@ -44,10 +44,11 @@
         <li><b>"thinking…" bubble</b> appears straight away, so you know the message was sent. It's removed when the reply arrives.</li>
         <li><b>Send is disabled</b> until the reply comes back: one request at a time, no double-sends from impatient clicks.</li>
         <li><b>A fast model:</b> Flash-Lite (name in the green badge) answers quickest and has the most free-tier headroom.</li>
-        <li><b>Errors become plain messages</b>, never a crash: 403 App Check refused, 429 quota used up, 500/503 model busy, network unreachable.
-          <code>respond()</code> always returns text, so the page can't get stuck on a failure.</li>
+        <li><b>Errors become plain messages</b>, never a crash: 403 App Check refused, 429 quota used up, 500/503 model busy,
+          no reply in time, network unreachable. <code>respond()</code> always returns text, so the page can't get stuck on a failure.</li>
+        <li><b>A time limit:</b> if no reply comes within 30 seconds, <code>main.js</code> stops waiting and you see "The model
+          took too long…". Without it, the Firebase SDK would wait 3 minutes.</li>
         <li><b>Timing:</b> the street view and the diagram below show how many milliseconds the model took.</li>
-        <li><b>Not yet:</b> a time limit. If Google never answers, "thinking…" stays until the browser gives up.</li>
       </ul>
     </details>
     <details>
@@ -68,12 +69,41 @@
         <li><b>App Check is enforced</b> on Firebase AI Logic: a request without a valid token gets 403.</li>
         <li><b>Only our domains</b> get tokens: <code>ragent-eec65.web.app</code>, <code>ragent-eec65.firebaseapp.com</code>,
           <code>ragents-eight.vercel.app</code>. No <code>localhost</code>, so a copy of this page run elsewhere is refused.</li>
-        <li><b>Single-use tokens:</b> every request gets a fresh token, so a captured one can't be replayed.</li>
+        <li><b>Single-use tokens:</b> every request gets a fresh token, so a captured one can't be replayed. No hourly
+          token is kept in the browser.</li>
         <li><b>Input limit:</b> 500 characters, checked before any request.</li>
         <li><b>No script injection:</b> replies are shown with <code>textContent</code>, so a reply containing HTML or a script is just text.</li>
         <li><b>Limited browser key:</b> Firebase restricted it to its own APIs; it can't call Gemini directly.</li>
         <li><b>No bill possible:</b> the free Spark plan with no billing account. Worst case is "quota used up" (429) until it resets.</li>
       </ul>
+    </details>
+    <details>
+      <summary>Hourly token or a fresh one each time?</summary>
+      <p>App Check can give the browser two kinds of token. This app uses <b>a fresh single-use token for every
+        message</b> and keeps no hourly token.</p>
+      <table>
+        <tr><th></th><th>Hourly (cached) token</th><th>Fresh token each time (this app)</th></tr>
+        <tr><td>How it works</td><td>Fetched once, cached in the browser, reused for every request. Renewed in the
+          background about 35 minutes into its 1-hour life</td><td>Fetched just before each request, and spent when
+          Google checks it</td></tr>
+        <tr><td>Token requests</td><td>1 per page load, plus renewals</td><td>1 per message</td></tr>
+        <tr><td>Speed</td><td>Faster: a request never waits for a token</td><td>Each message first waits for its token
+          request (a fraction of a second)</td></tr>
+        <tr><td>reCAPTCHA checks (limited free allowance a month)</td><td>1 per renewal</td><td>1 per message</td></tr>
+        <tr><td>If someone copies a token</td><td class="yes">They can reuse it until it expires (up to about 1 hour)</td>
+          <td class="no">Useless: it's already spent</td></tr>
+        <tr><td>Long-lived connections (e.g. Firestore live updates)</td><td>Fits: sent when the connection opens,
+          swapped on renewal</td><td>Doesn't fit: spent on first use</td></tr>
+        <tr><td>Supported by</td><td>Every product App Check protects: Firestore, Realtime Database, Cloud Storage,
+          Cloud Functions, AI Logic</td><td>Only AI Logic, callable Cloud Functions and your own backend (they mark the
+          token spent)</td></tr>
+        <tr><td>Best for</td><td>Frequent, cheap calls, like Firestore reads and writes</td><td>Rare, costly calls worth
+          protecting, like Gemini</td></tr>
+      </table>
+      <p><b>Why we chose a fresh token:</b> every Gemini call uses quota, so a token that could be replayed is worth
+        blocking. People send messages rarely, so the extra wait and reCAPTCHA check per message don't matter.</p>
+      <p><b>In <code>main.js</code>:</b> <code>useLimitedUseAppCheckTokens: true</code> (a fresh token per call) and
+        <code>isTokenAutoRefreshEnabled: false</code> (no hourly token fetched on page load or renewed).</p>
     </details>
     <details>
       <summary>Why it's safe, and what's still possible</summary>

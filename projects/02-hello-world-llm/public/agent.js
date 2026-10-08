@@ -67,15 +67,16 @@ export function createAgent(generate, onEvent = () => {}) {
  * Classifies an SDK/API error by where it happened.
  *
  * @param {unknown} err The thrown error (or any value).
- * @returns {"appcheck"|"quota"|"busy"|"network"|"other"}
+ * @returns {"appcheck"|"quota"|"busy"|"timeout"|"network"|"other"}
  *   appcheck = rejected by App Check / AI Logic (403); quota = 429; busy = model overloaded (500/503);
- *   network = never reached Google.
+ *   timeout = no reply within main.js's time limit; network = never reached Google.
  */
 export function errorKind(err) {
   const msg = String(err?.message ?? err ?? "");
   if (/app.?check|PERMISSION_DENIED|\b403\b/i.test(msg)) return "appcheck";
   if (/RESOURCE_EXHAUSTED|\b429\b|quota|rate.?limit/i.test(msg)) return "quota";
   if (/high demand|overloaded|UNAVAILABLE|\b50[03]\b/i.test(msg)) return "busy";
+  if (/timeout|timed out|DEADLINE_EXCEEDED|\b504\b/i.test(msg)) return "timeout";
   if (/failed to fetch|network|offline|ERR_/i.test(msg)) return "network";
   return "other";
 }
@@ -84,7 +85,7 @@ export function errorKind(err) {
  * Turns SDK/API errors into messages a user (and you, while learning) can act on.
  *
  * Recognised cases: App Check / permission (403), quota or rate limit (429), model busy (500/503),
- * network failures.
+ * no reply within the time limit, network failures.
  * Anything else is shown with its original text, shortened to 160 characters.
  *
  * @param {unknown} err The thrown error (or any value).
@@ -96,6 +97,7 @@ export function friendlyError(err) {
       return "The model refused the request because App Check isn't set up (or this browser isn't registered). See the step 2 README.";
     case "quota": return "The free model quota is used up for now. Please try again in a minute.";
     case "busy": return "The model is busy right now (high demand). Please try again in a moment.";
+    case "timeout": return "The model took too long to answer, so the request was stopped. Please try again.";
     case "network": return "Couldn't reach the model. Check your connection and try again.";
     default: return "Something went wrong calling the model: " + String(err?.message ?? err ?? "").slice(0, 160);
   }

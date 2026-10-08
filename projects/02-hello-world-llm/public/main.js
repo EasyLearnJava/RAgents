@@ -9,10 +9,13 @@
  * The page (index.html) calls startAgent() once, then respond(message) for each message.
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { initializeAppCheck, onTokenChanged, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
 import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
 import { FIREBASE_CONFIG, MODEL, RECAPTCHA_SITE_KEY } from "./ai-config.js";
 import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
+
+/** How long to wait for a reply, App Check token included. The Firebase SDK's own default is 3 minutes. */
+const REPLY_TIMEOUT_MS = 30_000;
 
 /**
  * Finds the Firebase web config: FIREBASE_CONFIG from ai-config.js if set, otherwise
@@ -31,30 +34,12 @@ async function loadFirebaseConfig() {
 }
 
 /**
- * When an App Check token was issued and when it expires, read from the token itself (a signed JWT whose middle part
- * is plain JSON). Only these two times leave this file: the token is a credential and is never shown.
- *
- * @param {string} jwt An App Check token.
- * @returns {{issuedAt?: number, expiresAt?: number}} Times in milliseconds, or {} if it can't be read.
- */
-function tokenTimes(jwt) {
-  try {
-    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, "=")));
-    return { issuedAt: claims.iat * 1000, expiresAt: claims.exp * 1000 };
-  } catch {
-    return {};
-  }
-}
-
-/**
  * Connects to the model once and returns the agent.
  *
  * If setup is incomplete it does not throw: it returns ready=false, and respond() replies with
  * the setup instruction, so the page can show it in the chat.
  *
- * @param {(event: object) => void} [onEvent] Optional stage reporter for the diagrams (see createAgent in agent.js). It also
- *   gets {type: "token", issuedAt, expiresAt} whenever the cached App Check token changes, and {type: "token-error"}.
+ * @param {(event: object) => void} [onEvent] Optional stage reporter for the diagrams (see createAgent in agent.js).
  * @returns {Promise<{ready: boolean, model: string, respond: (message: unknown) => Promise<string>}>}
  */
 export async function startAgent(onEvent) {
@@ -67,14 +52,14 @@ export async function startAgent(onEvent) {
   if (["localhost", "127.0.0.1"].includes(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
 
   const app = initializeApp(config);
-  // App Check must start before the first model call; tokens refresh automatically.
-  const appCheck = initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true });
-  // Optional: tell the page when the cached token changes (its times only), so the street view can show its expiry.
-  if (onEvent) onTokenChanged(appCheck, (t) => onEvent({ type: "token", ...tokenTimes(t.token) }), () => onEvent({ type: "token-error" }));
+  // App Check must start before the first model call. No auto-refresh: we keep no cached (hourly) token, because
+  // every model call gets its own single-use token (below). See "Hourly token or a fresh one each time?" in the README.
+  initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: false });
   // GoogleAIBackend = the Gemini Developer API (works on the free Spark plan).
   // Limited-use tokens are single-use, so a captured token can't be replayed by someone else.
   const ai = getAI(app, { backend: new GoogleAIBackend(), useLimitedUseAppCheckTokens: true });
-  const model = getGenerativeModel(ai, { model: MODEL, systemInstruction: SYSTEM_INSTRUCTION });
+  // No reply in time: the SDK cancels the request and throws, and respond() shows "The model took too long…".
+  const model = getGenerativeModel(ai, { model: MODEL, systemInstruction: SYSTEM_INSTRUCTION }, { timeout: REPLY_TIMEOUT_MS });
 
   // One message in, one reply out. No history yet: that's step 3.
   const generate = async (text) => (await model.generateContent(text)).response.text();
