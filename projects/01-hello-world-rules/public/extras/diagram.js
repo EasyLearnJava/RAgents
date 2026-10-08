@@ -1,9 +1,9 @@
 /**
  * EXTRA: a teaching aid, not part of the agent.
  *
- * Draws the "What happens when you press Send" diagram next to the chat and replays each message through it,
+ * Draws the "What happens when you press Send" diagram under the chat and replays each message through it,
  * naming the function that runs at each step (onSend → respond → add). The agent works the same without
- * this file: delete the two lines marked EXTRA in index.html and nothing else changes.
+ * this file: delete the lines marked EXTRA in index.html and nothing else changes.
  *
  * It learns which rule fired from the reply itself: in step 1 every rule gives a different reply, so
  * ruleFromReply() compares the reply with respond()'s own answers (test/extras.test.js checks this).
@@ -22,8 +22,8 @@ export function ruleFromReply(reply) {
   return "fallback";
 }
 
-/** How respond() got to its answer, for each rule (the checks run in this order). */
-const PATH = {
+/** How respond() got to its answer, for each rule (the checks run in this order). street.js uses it too. */
+export const PATH = {
   empty: 'text === "" → yes → return the hint',
   greeting: 'text === "" → no · GREETING.test(text) → yes → return "Hello World"',
   fallback: 'text === "" → no · GREETING.test(text) → no → return the fallback',
@@ -60,11 +60,11 @@ let flowReady = null;             // the diagram, created once
 let run = 0;                      // a newer message cancels an older replay
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Draws the diagram once, next to the chat (style.css places it), using the shared engine (shell/lib/flow.js, served at /lib/flow.js). */
+/** Draws the diagram once, under the chat and the street view (style.css places it), using the shared engine (shell/lib/flow.js, served at /lib/flow.js). */
 function ensureFlow() {
   flowReady ??= import("/lib/flow.js").then(({ createFlow }) => {
     const box = document.createElement("div");
-    box.className = "diagram";    // style.css puts it beside the chat, or under it when there isn't room
+    box.className = "diagram";    // style.css gives it its own row under the chat
     document.body.append(box);    // the diagram adds its own place on the page; index.html needs no diagram HTML
     return createFlow(box, SPEC);
   });

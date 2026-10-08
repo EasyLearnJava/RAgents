@@ -3,10 +3,5 @@
   "title": "Hello World (real model)",
   "badge": "Gemini",
   "summary": "Sends your message to a real model (Gemini, through Firebase AI Logic) and shows the reply. No API key in the code.",
-  "learn": [
-    "Calling a hosted model from a web page: model name, instructions, one message, one reply",
-    "Why the API key never goes in browser code, and how Firebase AI Logic + App Check protect it",
-    "Handling slow replies and errors (quota, permissions, network) like a real product"
-  ],
   "next": "It forgets everything between messages (a later step adds history). Step 3 first rebuilds step 1 with LangChain, the framework most agents are built with."
 }

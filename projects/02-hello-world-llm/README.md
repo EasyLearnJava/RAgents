@@ -5,9 +5,9 @@ It matches *Step 1 · Hello World agent* in the notes, with Gemini in place of O
 
 | File | What it is |
 |---|---|
-| `project.json` | Title, summary and "what you learn" for the site's left nav |
+| `project.json` | Title, summary and "next" for the site's left nav |
 | `public/agent.js` | Pure logic: input checks, call the model, friendly errors. No Firebase imports, so it's testable |
-| `public/main.js` | Firebase wiring: config → App Check → AI Logic → model |
+| `public/main.js` | Firebase wiring: config → App Check → AI Logic → model. If given the optional `onEvent`, it also reports when the cached App Check token was issued and expires (the times only, never the token) |
 | `public/ai-config.js` | **The only file you edit:** model name and App Check site key (neither is secret) |
 | `public/index.html` | Chat window with a status badge and a "thinking…" bubble |
 | `public/style.css` | How the chat page looks |
@@ -18,6 +18,8 @@ It matches *Step 1 · Hello World agent* in the notes, with Gemini in place of O
 
 | File | What it is |
 |---|---|
+| `public/index.html` (the `<aside class="about">`) | The "About this step" panel next to the chat: what you learn, how a message travels, slow replies and errors, where the keys are, security features, what's still possible |
+| `public/extras/street.js` | The "Street view" on its own row under the chat: your browser and Google Cloud as two pieces of land joined by an internet bridge. A black car carries your message along a winding road through the form, index.html, agent.js's checks and main.js, over the bridge (its tag turns to scrambled text: encrypted), through App Check's gate, Firebase AI Logic (adds the key) and Gemini, and back. It follows the real events, so a too-long message turns back inside your browser and a 403 stops at App Check. A courier drone fetches App Check tokens (once on page load, then a fresh single-use one before each message) and shows the real result of each token request; if it fails (locally: an unregistered debug token, 403) the car turns back at main.js, because the SDK never sends the message. A token board shows the cached 🎫 (with its expiry counting down), the single-use 🎟 that rides with each message, and what proves the page (locally the debug token, live reCAPTCHA); locally a panel explains the debug token's life. A network log lists the page's real requests with their status. Built with `/lib/town.js` |
 | `public/extras/diagram.js` | The "What happens when you press Send" diagram: onSend → respond → generate → AI Logic → Gemini, and back. It follows the agent's real stages through the optional `onEvent` callback |
 
 To see the agent without the extras, delete the lines marked `EXTRA` in `index.html`; the chat works the same.

@@ -19,6 +19,7 @@
   // Page wiring for step 1: read the input, ask the agent (agent.js), show both messages.
   import { respond } from "./agent.js";
   import { showDiagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
+  import { showStreet } from "./extras/street.js";     // EXTRA: the same trip as a street scene with a truck
 
   const log = document.getElementById("log");      // the scrolling message list
   const input = document.getElementById("msg");    // the text box
@@ -42,6 +43,7 @@
     input.value = "";
     input.focus();
     showDiagram(text, reply);          // EXTRA: replay this message in the diagram
+    showStreet(text, reply);           // EXTRA: and as a truck trip in the street view
   }
   document.getElementById("form").addEventListener("submit", onSend);
 </script>

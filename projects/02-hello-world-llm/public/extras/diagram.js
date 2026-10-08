@@ -49,9 +49,10 @@ const SPEC = {
   ],
 };
 
-// The diagram adds its own place under the chat, so index.html needs no diagram HTML.
+// The diagram adds its own place on the page (style.css gives it its own row, under the street view),
+// so index.html needs no diagram HTML.
 const box = document.createElement("div");
-box.style.width = "100%";
+box.className = "diagram";
 document.body.append(box);
 const flow = createFlow(box, SPEC);
 
@@ -71,6 +72,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Request row: agent.js reports each stage here (createAgent's onEvent). */
 function event(e) {
+  if (e.type.startsWith("token")) return;   // App Check token updates are for the street view
   outcome = e;
   if (e.type === "rejected") {
     const why = e.reason === "empty" ? "nothing typed" : "longer than 500 characters";

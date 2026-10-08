@@ -33,6 +33,7 @@ RAgents/
 │     └─ backend/            Python steps add a server: FastAPI + LangChain, pytest tests, Dockerfile for Cloud Run
 ├─ shell/index.html          the site: left nav + the selected project
 ├─ shell/lib/flow.js         live "what happens when you press Send" diagram, shared by every step
+├─ shell/lib/town.js         isometric "street view" toolkit (curved roads, buildings, the car), shared by every step
 ├─ scripts/build.mjs         builds dist/ from shell/ + every projects/*/public
 ├─ scripts/serve.mjs         local preview on http://127.0.0.1:5000 (forwards /api/* to a local Python backend on :8000)
 ├─ vercel.json               Vercel: build dist/, serve it, send /api/* to Python

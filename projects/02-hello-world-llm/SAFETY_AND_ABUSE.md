@@ -48,7 +48,8 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 ### 2. Someone copies our code to their own site, or calls the API from a script
 - **Risk:** they'd use our project, and our free quota, from their site or a bot.
 - **How we solved it:** **App Check is enforced for Firebase AI Logic.** Each request must carry a token that
-  reCAPTCHA Enterprise issues only on our domains (`ragent-eec65.web.app`, `ragent-eec65.firebaseapp.com`).
+  reCAPTCHA Enterprise issues only on our domains (`ragent-eec65.web.app`, `ragent-eec65.firebaseapp.com`,
+  `ragents-eight.vercel.app`).
   Requests from anywhere else get `403 PERMISSION_DENIED`.
 - **Where:** Firebase console → App Check → APIs → Firebase AI Logic = **Enforced**. In code: `initializeAppCheck(...)` in `public/main.js`.
 

@@ -19,10 +19,125 @@
       <button id="send" type="submit">Send</button>
     </form>
   </main>
+  <!-- EXTRA: the "About this step" panel next to the chat (not part of the agent; delete it and the chat works the same). -->
+  <aside class="about" aria-label="About this step">
+    <details open>
+      <summary>What you learn</summary>
+      <ul>
+        <li>Calling a hosted model from a web page: model name, instructions, one message, one reply</li>
+        <li>Why the API key never goes in browser code, and how Firebase AI Logic + App Check protect it</li>
+        <li>Handling slow replies and errors (quota, permissions, network) like a real product</li>
+      </ul>
+    </details>
+    <details>
+      <summary>How a message travels</summary>
+      <ol>
+        <li><b>agent.js</b> checks your text first: empty or over 500 characters is stopped here, so it never costs a request.</li>
+        <li><b>App Check</b> asks reCAPTCHA Enterprise to vouch for this page and gets a short-lived, single-use token.</li>
+        <li><b>Firebase AI Logic</b> (Google's server) checks the token, adds the Gemini key and sends your message plus the instructions to the model.</li>
+        <li><b>Gemini</b> replies; the page shows it as plain text.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>How slow replies and errors are handled</summary>
+      <ul>
+        <li><b>"thinking…" bubble</b> appears straight away, so you know the message was sent. It's removed when the reply arrives.</li>
+        <li><b>Send is disabled</b> until the reply comes back: one request at a time, no double-sends from impatient clicks.</li>
+        <li><b>A fast model:</b> Flash-Lite (name in the green badge) answers quickest and has the most free-tier headroom.</li>
+        <li><b>Errors become plain messages</b>, never a crash: 403 App Check refused, 429 quota used up, 500/503 model busy, network unreachable.
+          <code>respond()</code> always returns text, so the page can't get stuck on a failure.</li>
+        <li><b>Timing:</b> the street view and the diagram below show how many milliseconds the model took.</li>
+        <li><b>Not yet:</b> a time limit. If Google never answers, "thinking…" stays until the browser gives up.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Where the keys are</summary>
+      <table>
+        <tr><th>Key</th><th>Secret?</th><th>Where it lives</th></tr>
+        <tr><td>Gemini API key</td><td class="yes">Yes</td><td>Inside Firebase AI Logic, on Google's side. Never in the code, the repo or your browser</td></tr>
+        <tr><td>reCAPTCHA secret key</td><td class="yes">Yes</td><td>Google Cloud only; App Check uses it server-side</td></tr>
+        <tr><td>App Check debug token</td><td class="yes">Yes</td><td>Local testing only: the browser console and the Firebase console. Never committed</td></tr>
+        <tr><td>reCAPTCHA site key</td><td class="no">No</td><td><code>ai-config.js</code>. Public by design; only works on the allowed domains</td></tr>
+        <tr><td>Firebase web config (<code>apiKey</code>, project ID…)</td><td class="no">No</td><td>Not in the code: loaded at runtime from <code>/__/firebase/init.json</code>. It names the project, it doesn't unlock it</td></tr>
+        <tr><td>Model name</td><td class="no">No</td><td><code>ai-config.js</code></td></tr>
+      </table>
+    </details>
+    <details>
+      <summary>Security features</summary>
+      <ul>
+        <li><b>App Check is enforced</b> on Firebase AI Logic: a request without a valid token gets 403.</li>
+        <li><b>Only our domains</b> get tokens: <code>ragent-eec65.web.app</code>, <code>ragent-eec65.firebaseapp.com</code>,
+          <code>ragents-eight.vercel.app</code>. No <code>localhost</code>, so a copy of this page run elsewhere is refused.</li>
+        <li><b>Single-use tokens:</b> every request gets a fresh token, so a captured one can't be replayed.</li>
+        <li><b>Input limit:</b> 500 characters, checked before any request.</li>
+        <li><b>No script injection:</b> replies are shown with <code>textContent</code>, so a reply containing HTML or a script is just text.</li>
+        <li><b>Limited browser key:</b> Firebase restricted it to its own APIs; it can't call Gemini directly.</li>
+        <li><b>No bill possible:</b> the free Spark plan with no billing account. Worst case is "quota used up" (429) until it resets.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Why it's safe, and what's still possible</summary>
+      <ul>
+        <li>Nothing secret is in the page: reading its source, or the public repo, gives nothing that unlocks the model.</li>
+        <li>Copying the page to another site or calling the API from a script fails App Check.</li>
+        <li>Gemini runs on Google's servers, so heavy traffic can't crash anything of ours.</li>
+        <li><b>Still possible:</b> a patient visitor on the real site can use up the free daily quota. No cost, no data exposed.</li>
+        <li><b>Still to do:</b> restrict the browser key to our websites, and lower the per-user rate limit (100 → 10 a minute).</li>
+        <li>Type only made-up content: the free tier may use prompts to improve Google's products.</li>
+      </ul>
+      <p>Every risk in detail:
+        <a href="https://github.com/EasyLearnJava/RAgents/blob/main/projects/02-hello-world-llm/SAFETY_AND_ABUSE.md" target="_blank" rel="noopener">SAFETY_AND_ABUSE.md ↗</a></p>
+    </details>
+    <details>
+      <summary>Is my message private on the network? <span class="tag">To Review</span></summary>
+      <p><b>Short answer:</b> encrypted on the way, so strangers on the network can't read it, but not hidden from everyone.</p>
+      <p><b>What protects it</b></p>
+      <ul>
+        <li><b>HTTPS for the whole trip:</b> the page loads over HTTPS, and the Firebase SDK sends your message to
+          Google's AI Logic endpoint over HTTPS (TLS).</li>
+        <li><b><code>.app</code> domains are HTTPS-only:</b> every <code>.app</code> domain is on the browsers' built-in
+          HTTPS-only (HSTS preload) list, so <code>ragents-eight.vercel.app</code> and <code>ragent-eec65.web.app</code>
+          can't be downgraded to plain HTTP.</li>
+        <li><b>What an eavesdropper sees</b> (same Wi-Fi, internet provider, routers): which Google server you talk to,
+          roughly how big each message is and when. Not the text.</li>
+        <li><b>Local testing:</b> <code>http://127.0.0.1:5000</code> is plain HTTP, but that traffic never leaves your
+          computer. The call to Google is still HTTPS.</li>
+      </ul>
+      <p><b>Who can still see it</b></p>
+      <table>
+        <tr><th>Who</th><th>Why</th></tr>
+        <tr><td>A company network that inspects HTTPS (e.g. Zscaler)</td><td>It decrypts, inspects and re-encrypts
+          traffic, so the company proxy can read your messages in plain text</td></tr>
+        <tr><td>Google</td><td>Encryption ends at Google, because the model has to read the message. On the free tier,
+          Google may use prompts to improve its products</td></tr>
+        <tr><td>Your browser</td><td>Extensions that can read pages, and anyone at your keyboard (DevTools)</td></tr>
+      </table>
+      <p>No hosted model avoids the Google row: the provider must read the text to answer it. Only a model running on
+        your own machine (e.g. Ollama) avoids it.</p>
+      <p><b>Check it yourself</b></p>
+      <ol>
+        <li>Press F12 → <b>Network</b>, send a message, and click the request to
+          <code>firebasevertexai.googleapis.com</code>: it's <code>https://</code>, and only your browser shows the body in
+          readable form.</li>
+        <li>Click the padlock in the address bar → the connection's certificate → <b>Issued by</b>. Behind an inspecting
+          proxy it names the proxy (e.g. Zscaler), not Google: that's the proof it's being decrypted.</li>
+      </ol>
+      <p><b>How to keep it more private</b></p>
+      <ol>
+        <li><b>Don't send anything sensitive:</b> only made-up content here. This matters most.</li>
+        <li>Use a personal device on a personal network, which takes the company proxy out of the path.</li>
+        <li>A paid Gemini plan if Google must not use prompts for training.</li>
+        <li>A Content Security Policy on the site, so an injected script can't send messages elsewhere
+          (not added yet; it can't stop browser extensions).</li>
+        <li>A local model (e.g. Ollama) if nothing should leave the machine.</li>
+      </ol>
+    </details>
+  </aside>
 <script type="module">
   // Page wiring for step 2: connect once (startAgent), then send each message to the model.
   import { startAgent } from "./main.js";
   import { diagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
+  import { street } from "./extras/street.js";     // EXTRA: the same trip as a street scene with a car
 
   const log = document.getElementById("log");        // the scrolling message list
   const input = document.getElementById("msg");      // the text box
@@ -42,13 +157,13 @@
   // Connect once when the page loads. If setup is incomplete, show what's missing in the chat.
   let agent;
   try {
-    agent = await startAgent(diagram.event);   // diagram.event is EXTRA: startAgent() works without it
+    agent = await startAgent((e) => { diagram.event(e); street.event(e); });   // EXTRA: startAgent() works without it
     status.textContent = agent.ready ? agent.model : "setup needed";
     status.className = agent.ready ? "ok" : "warn";
     if (!agent.ready) {
       const problem = await agent.respond("");
       add(problem, "bot");
-      diagram.setupProblem(problem);           // EXTRA
+      diagram.setupProblem(problem); street.setupProblem(problem);   // EXTRA
     }
   } catch (err) {
     status.textContent = "error"; status.className = "warn";
@@ -63,14 +178,14 @@
     if (text.trim()) add(text, "you");
     input.value = "";
     send.disabled = true;
-    diagram.start(text, agent.ready);          // EXTRA
+    diagram.start(text, agent.ready); street.start(text, agent.ready);   // EXTRA
     const thinking = add("thinking…", "bot", "thinking");
     const reply = await agent.respond(text);   // ← the call into agent.js (which calls generate() in main.js)
     thinking.remove();
     add(reply, "bot");                         // ← the reply goes back onto the page
     send.disabled = false;
     input.focus();
-    diagram.reply(reply);                      // EXTRA: replay the way back
+    diagram.reply(reply); street.reply(reply);   // EXTRA: replay the way back
   }
   document.getElementById("form").addEventListener("submit", onSend);
 </script>
