@@ -46,10 +46,13 @@
         <li><b>A fast model:</b> Flash-Lite (name in the green badge) answers quickest and has the most free-tier headroom.</li>
         <li><b>Errors become plain messages</b>, never a crash: 403 App Check refused, 429 quota used up, 500/503 model busy,
           no reply in time, network unreachable. <code>respond()</code> always returns text, so the page can't get stuck on a failure.</li>
-        <li><b>A time limit:</b> if no reply comes within 90 seconds, <code>main.js</code> stops waiting and you see "The model
-          took too long…". Free-tier replies can take 20 seconds or more, so the limit is generous; without it, the Firebase
-          SDK would wait 3 minutes.</li>
-        <li><b>Timing:</b> the street view and the diagram below show how many milliseconds the model took.</li>
+        <li><b>A time limit:</b> if no reply comes within 90 seconds (App Check token, the trip to Google and Gemini's reply
+          together), <code>main.js</code> stops waiting and you see "No reply came in time…". Free-tier replies can take 20
+          seconds or more, so the limit is generous; without it, the Firebase SDK would wait 3 minutes, or forever if the
+          token step got stuck.</li>
+        <li><b>Where the time goes:</b> in the street view, under its step tracker, "Where the time went" shows each stage's real
+          time (the animation is slowed down), and the stage you're waiting on counts up, so you can see which stage a slow reply
+          spent its time in: usually the request to Gemini.</li>
       </ul>
     </details>
     <details>

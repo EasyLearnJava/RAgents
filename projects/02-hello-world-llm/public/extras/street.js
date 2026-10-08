@@ -16,13 +16,19 @@
  * App Check tokens get their own courier drone, because fetching one is a separate trip to Google: for each message
  * the Firebase SDK fetches a fresh single-use token (useLimitedUseAppCheckTokens), which travels with the request.
  * main.js keeps no cached token (auto-refresh is off), so nothing is fetched on page load. The drone shows the real
- * result of each token request (its HTTP status, from Resource Timing). If the request fails (locally: an unregistered
- * debug token comes back 403), or the SDK doesn't even ask (after a 403 it holds off until the page is reloaded), the
- * SDK throws before sending anything, so the car turns back at main.js: the message never leaves your browser.
+ * result of each token request (its HTTP status, from Resource Timing). If App Check refuses it (locally: an
+ * unregistered debug token comes back 403), it never gets through (offline, or blocked on the way), or the SDK doesn't
+ * even ask (after a 403 it holds off until the page is reloaded), the SDK throws before sending anything; if no token
+ * comes back within main.js's time limit, generate() stops waiting. Either way the car turns back at main.js: the
+ * message never leaves your browser.
  *
  * The token board above your browser shows the single-use 🎟️ that rides with each message, and what proves the page
  * to App Check: locally the debug token, live reCAPTCHA.
  * Locally, a panel under the scene explains the debug token: where and when it's made, what it's for, how long it lasts.
+ *
+ * Under the tracker, "Where the time went" shows the real time of each stage (the sums are in timing.js): the street
+ * view is slowed down, so this is where you see which stage a slow reply really spends its time in (usually the
+ * request to Gemini). The stage you're waiting on counts up while the message is out.
  *
  *   street.start   a new message was sent        street.event   pass agent.js's stage events here
  *   street.reply   the reply is on the page        street.setupProblem   setup isn't finished
@@ -31,6 +37,7 @@
  */
 import * as t from "/lib/town.js";
 import { MODEL } from "../ai-config.js";
+import { appCheckCode, fmt, stages, tokenVerdict } from "./timing.js";
 
 const { svg, box, house, depot, factory, chimney, tree, lamp, road, curve, lanes, depthLayer, pin, boom, board,
   vehicle, courier, tracker, card, el, paneX, paneY, banner, iso } = t;
@@ -78,9 +85,13 @@ function build() {
   const ui = card("Street view: your message leaves the browser",
     "The car carries your message out of your browser, over the HTTPS bridge across the internet and into Google Cloud, then " +
     "brings the reply back. It stops where each piece runs and follows what really happens, including errors. The drone fetches a " +
-    "fresh single-use App Check token before each message. The real round trip takes about a second; everything is slowed down.",
+    "fresh single-use App Check token before each message. Everything is slowed down so you can follow it; the real times are " +
+    "under the tracker, in \"Where the time went\" (a free-tier reply can take 20 s or more, mostly waiting for Google).",
     "Street view of one message's trip to Gemini and back");
-  performance.setResourceTimingBufferSize?.(1000);   // the network log and the token checks read it; the default keeps 250
+  performance.setResourceTimingBufferSize?.(1000);   // the network log, token checks and timings read it; the default keeps 250
+  // When it's full, make room instead of losing entries (the browser then adds the ones that were waiting).
+  performance.addEventListener?.("resourcetimingbufferfull", () =>
+    performance.setResourceTimingBufferSize(2 * performance.getEntriesByType("resource").length));
 
   const root = svg("svg", { class: "st-scene st-framed", viewBox: "-580 -360 2340 1090", role: "img",
     "aria-label": "Your browser and Google Cloud as two pieces of land joined by an internet bridge; a car carries the message between them" });
@@ -191,9 +202,9 @@ function build() {
   const list = el("ol", "st-log");
   log.append(head, list, el("p", "st-note", "From your browser's own record (Resource Timing). Hosts ending in googleapis.com are Google Cloud; " +
     "the App Check token comes from reCAPTCHA and App Check before each model call."));
-  const tls = tlsPanel();
+  const timing = timingPanel(), tls = tlsPanel();
   const debug = LOCAL ? debugPanel() : null;
-  ui.card.append(root, track.el, ui.now, tls.el, ...(debug ? [debug.el] : []), log);
+  ui.card.append(root, track.el, ui.now, timing.el, tls.el, ...(debug ? [debug.el] : []), log);
   document.body.append(ui.card);        // style.css gives it its own row under the chat
 
   const sOut = (p) => lane.sOut(...p);
@@ -201,7 +212,7 @@ function build() {
   ui.replay.addEventListener("click", () => { if (lastRun) run({ ...lastRun, replay: true }); });
   ui.pace.addEventListener("click", () => { ui.pace.textContent = play.cycle(); });
   return {
-    car, drone, lane, center, play, ui, rules, track, formArm, checkArm, sOut, tokens, debug, bridge, tls,
+    car, drone, lane, center, play, ui, rules, track, formArm, checkArm, sOut, tokens, debug, bridge, tls, timing,
     stop(i, where, skipped = []) {
       for (const [k, g] of Object.entries(b)) { g.classList.toggle("on", k === where); g.classList.remove("bad"); }
       for (const [k, p] of Object.entries(pins)) { p.classList.toggle("on", k === where); p.classList.remove("bad"); }
@@ -295,14 +306,14 @@ function debugPanel() {
   };
 }
 
-/** Shows what a token request's result says about the proof (debug token or reCAPTCHA). */
+/** Shows what a token request's result says about the proof (debug token or reCAPTCHA): nothing if it never got through. */
 function showProof(st, r) {
-  if (!r || r.status === 0) return;
-  const ok = r.status === 200;
+  if (!r || r.verdict === "failed") return;
+  const ok = r.verdict === "ok", status = r.status ? ` (${r.status})` : "";
   if (LOCAL) {
-    st.tokens.set(1, ok ? "✓ registered" : `✕ not registered (${r.status})`, ok ? "ok" : "bad");
+    st.tokens.set(1, ok ? "✓ registered" : `✕ not registered${status}`, ok ? "ok" : "bad");
     st.debug?.registered(ok);
-  } else st.tokens.set(1, ok ? "✓ reCAPTCHA vouched" : `✕ refused (${r.status})`, ok ? "ok" : "bad");
+  } else st.tokens.set(1, ok ? "✓ reCAPTCHA vouched" : `✕ refused${status}`, ok ? "ok" : "bad");
 }
 
 /** One side of the HTTPS bridge at x: two towers, the main cable with its backstays, and the hangers. */
@@ -381,6 +392,52 @@ async function crypt(st, tw, end, mode, words, kind = "you") {
   }
 }
 
+/**
+ * Under the tracker: where the time really went for your last message (the sums are in timing.js). Each stage is a
+ * slice of one bar and a row with its time and share: blue is your browser, orange is Google (over the internet) and
+ * striped is both, where the page can't split them. While you wait, the stage you're waiting on counts up.
+ * It's redrawn five times a second, so it updates its rows in place: rebuilding them would restart the waiting pulse,
+ * stop the bar from growing smoothly and clear any text you select.
+ */
+function timingPanel() {
+  const box = el("div", "st-timing");
+  const bar = el("div", "st-tbar"), list = el("ol", "st-tlist");
+  const note = el("p", "st-note", "Send a message: each stage's real time shows here, measured by your browser.");
+  box.append(el("p", "st-label", "⏱ Where the time went: real times for your last message (the street view is slowed down)"), bar, list, note);
+  const WHERE = { browser: "your browser", google: "Google, over the internet", both: "your browser + Google" };
+  /** Gives `parent` exactly n children (new ones from make()) and returns them. */
+  const keep = (parent, n, make) => {
+    while (parent.children.length > n) parent.lastElementChild.remove();
+    while (parent.children.length < n) parent.append(make());
+    return [...parent.children];
+  };
+  /** Sets text or a class only when it changed (rewriting the same text would still clear a selection in it). */
+  const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const cls = (node, name) => { if (node.className !== name) node.className = name; };
+  const blank = () => { const li = el("li"); li.append(el("i"), el("span", "nm"), el("small", "wh"), el("b"), el("small", "pc")); return li; };
+  return {
+    el: box,
+    /** Draws what stages() in timing.js returns. */
+    show({ rows, total, live, note: text }) {
+      const share = (ms) => (total > 0 ? `${Math.round((100 * ms) / total)}%` : "");
+      const kind = (r) => `${r.where}${r.live ? " live" : ""}`;
+      keep(bar, rows.length, () => el("span")).forEach((slice, i) => {
+        cls(slice, kind(rows[i]));
+        slice.style.flexGrow = String(Math.max(1, rows[i].ms));      // the same node each time, so it grows smoothly
+        slice.title = `${rows[i].name}: ${fmt(rows[i].ms)}`;
+      });
+      const items = [...rows.map((r) => [kind(r), r.name, WHERE[r.where], fmt(r.ms) + (r.live ? "…" : ""), share(r.ms)]),
+        ["total", live ? "So far" : "Total: from Send to the reply on the page", "", fmt(total) + (live ? "…" : ""), ""]];
+      keep(list, items.length, blank).forEach((li, i) => {
+        const [name, ...texts] = items[i];
+        cls(li, name);
+        texts.forEach((s, j) => put(li.children[j + 1], s));
+      });
+      put(note, text || "Measured by your browser: its own clock, and Resource Timing for the requests to Google.");
+    },
+  };
+}
+
 /** Under the scene: what the HTTPS bridge uses to encrypt and decrypt, step by step (they light up as the car passes). */
 function tlsPanel() {
   const box = el("div", "st-debug st-tls");
@@ -431,36 +488,40 @@ const modelRequests = (t0) => performance.getEntriesByType("resource")
   .filter((e) => e.startTime >= t0 && e.name.includes("firebasevertexai.googleapis.com"));
 
 /**
- * Waits up to `ms` for a token exchange that started after t0, or less once `settled()` says the model call is over
- * (any token request would show by then). Returns { status, debug } (status 0 = hidden) or null.
+ * Waits up to `ms` for a token exchange that started after t0, or less once outcome() says the model call is over (any
+ * token request would show by then). Returns { status, debug, verdict } or null: status is null when the browser
+ * doesn't report it, and verdict is timing.js's tokenVerdict(): "ok", "refused" or "failed" (it never got through).
  */
-async function tokenResult(tw, t0, ms, settled) {
+async function tokenResult(tw, t0, ms, outcome) {
   let until = performance.now() + ms;
   for (;;) {
     const e = tokenRequests(t0).at(-1);
-    if (e) return { status: e.responseStatus || 0, debug: e.name.includes("exchangeDebugToken") };
-    if (settled?.()) until = Math.min(until, performance.now() + 400);
+    if (e) {
+      const status = e.responseStatus ?? null;
+      return { status, debug: e.name.includes("exchangeDebugToken"), verdict: tokenVerdict(status, outcome()) };
+    }
+    if (outcome()) until = Math.min(until, performance.now() + 400);
     if (performance.now() > until) return null;
     await new Promise((r) => setTimeout(r, 150));
     tw.alive();
   }
 }
 
-/** True unless the token request clearly failed. */
-const tokenOk = (r) => !r || r.status === 0 || r.status === 200;
+/** What the drone shows for a token request that brought no token. */
+const tokenError = (r) => (r.verdict === "failed" ? "✕ failed" : `✕ ${r.status || "refused"}`);
 
 /**
  * The courier's round trip for a token: fly to App Check's gate, wait for the real result (or show the recorded
  * one on a replay), show it, fly home. Returns the result.
  */
-async function fetchToken(st, tw, t0, icon, label, recorded, settled) {
+async function fetchToken(st, tw, t0, icon, label, recorded, outcome) {
   const { drone } = st;
   drone.place(...DRONE_HOME); drone.carry("🔒 " + label, "lock");     // a request of its own, over HTTPS: locked in flight
   await drone.fly(tw, DRONE_GATE);
-  const r = recorded !== undefined ? recorded : await tokenResult(tw, t0, 6000, settled);
-  const ok = tokenOk(r), result = ok ? (r ? `${icon} token` : `${icon} ?`) : `✕ ${r.status}`;
+  const r = recorded !== undefined ? recorded : await tokenResult(tw, t0, 6000, outcome);
+  const ok = !r || r.verdict === "ok", result = ok ? (r ? `${icon} token` : `${icon} ?`) : tokenError(r);
   drone.carry(result, ok ? "ok" : "err");
-  if (!ok) st.bad("appcheck");
+  if (r?.verdict === "refused") st.bad("appcheck");                 // "failed" never reached App Check
   showProof(st, r);
   await tw.wait(800);
   drone.carry("🔒 " + result, "lock");
@@ -475,6 +536,7 @@ const scene = typeof document === "undefined" ? null : build();
 let current = null;                              // the message being shown: its events arrive while the car drives
 let lastRun = null;                              // everything about the last message, for Replay
 let firstSend = null;                            // performance.now() of the first message, for the network log
+let ticker = 0;                                  // redraws the timing panel while a message is out
 
 /** A promise you resolve later (and that never complains if it's abandoned). */
 function later() {
@@ -488,23 +550,43 @@ function later() {
 function start(text, ready) {
   for (const d of current ? [current.check, current.outcome, current.reply] : []) d.reject(t.STOPPED);
   firstSend ??= performance.now();
-  current = { text, ready, t0: performance.now(), check: later(), outcome: later(), reply: later(), seen: {} };
+  const sent = performance.now();
+  current = { text, ready, t0: sent, marks: { sent }, check: later(), outcome: later(), reply: later(), seen: {} };
+  clearInterval(ticker);
+  ticker = setInterval(() => measure(), 200);
+  measure();
   run(current);
 }
 
-/** agent.js's stage events (createAgent's onEvent): the same ones the box diagram uses. */
+/** agent.js's stage events (createAgent's onEvent): the same ones the box diagram uses. Each one is also timed. */
 function event(e) {
   if (!current) return;
-  if (e.type === "rejected" || e.type === "accepted") { current.seen.check = e; current.check.resolve(e); }
-  else if (e.type.startsWith("model-") && e.type !== "model-start") { current.seen.outcome = e; current.outcome.resolve(e); }
+  const now = performance.now(), marks = current.marks;
+  if (e.type === "rejected" || e.type === "accepted") { marks.checked = now; current.seen.check = e; current.check.resolve(e); }
+  else if (e.type === "model-start") marks.generate = now;
+  else if (e.type.startsWith("model-")) { marks.result = now; current.seen.outcome = e; current.outcome.resolve(e); }
+  measure();
 }
 
 /** The reply is on the page: the car can bring it home. */
 function reply(text) {
   if (!current) return;
-  current.seen.reply = text;
-  current.reply.resolve(text);
-  lastRun = { text: current.text, ready: current.ready, seen: current.seen };   // the token result may still be arriving
+  const msg = current;
+  msg.marks.shown = performance.now();
+  msg.seen.reply = text;
+  msg.reply.resolve(text);
+  lastRun = { text: msg.text, ready: msg.ready, seen: msg.seen };   // the token result may still be arriving
+  measure();
+  // Resource Timing can report the last request a moment after the reply is shown: look once more, then stop.
+  setTimeout(() => { if (current === msg) { measure(); clearInterval(ticker); } }, 1500);
+}
+
+/** Redraws the timing panel for the message being shown: its marks plus the requests Resource Timing has seen. */
+function measure() {
+  if (!scene || !current) return;
+  const marks = current.marks;
+  scene.timing.show(stages({ marks, outcome: current.seen.outcome, tokens: tokenRequests(marks.sent),
+    model: modelRequests(marks.sent)[0] ?? null, now: performance.now(), local: LOCAL }));
 }
 
 /** Setup isn't finished (shown when the page loads). */
@@ -517,7 +599,7 @@ async function run(msg) {
   // A replay uses the recorded events; a live message waits for them.
   const got = (k) => (msg.replay ? Promise.resolve(msg.seen[k]) : msg[k].p);
   const tw = st.play.begin();
-  st.ui.replay.disabled = !lastRun && !msg.replay;
+  st.ui.replay.disabled = !msg.replay;            // a live message keeps it off until its own trip has been drawn
   const boomTo = (arm, to) => { const from = arm.deg; return tw.tween(450, (e) => arm(from + (to - from) * e)); };
   const typed = quote(msg.text.trim(), 22);
   let skipped = [];
@@ -559,26 +641,42 @@ async function run(msg) {
         st.tokens.set(0, "fetching one for this message…", "wait");
         let tok = await fetchToken(st, tw, msg.t0, "🎟️", "single-use 🎟️?", msg.replay ? (msg.seen.token ?? null) : undefined,
           () => msg.seen.outcome);
+        // Without a reported status, a failed token request shows only as the App Check error, which may have come in since.
+        if (tok && !msg.replay) tok = { ...tok, verdict: tokenVerdict(tok.status, msg.seen.outcome) };
         if (!msg.replay) msg.seen.token = tok;
         if (!tok) {
-          // No token request seen, so wait for the result. An App Check error with no request to Google means the SDK
-          // didn't even ask (after a 403 it holds off until the page is reloaded): nothing left your browser.
+          // No token request seen, so wait for the result. An App Check error or a timeout with no request to Google means
+          // no token came (after a 403 the SDK holds off until the page is reloaded): nothing left your browser.
           const out = await got("outcome");
           if (!msg.replay) msg.seen.sent = modelRequests(msg.t0).length > 0;
-          if (out.type === "model-error" && out.kind === "appcheck" && !msg.seen.sent) tok = { held: true };
+          if (out.type === "model-error" && (out.kind === "appcheck" || out.kind === "timeout") && !msg.seen.sent) {
+            tok = { held: out.kind, code: appCheckCode(out) };
+          }
         }
-        if (tok?.held || !tokenOk(tok)) {
-          // No valid token: the SDK throws before sending anything, so the message never leaves your browser.
+        if (tok?.held || (tok && tok.verdict !== "ok")) {
+          // No valid token: the SDK throws before sending anything (or main.js stops waiting for one), so the message never
+          // leaves your browser.
           skipped = [5, 6, 7, 8];
           st.sending(false);
           car.carry(`${typed} 🎟️✕`, "err");
-          st.drone.carry(tok.held ? "✕ no token" : `✕ ${tok.status}`, "err");
-          st.tokens.set(0, tok.held ? "✕ none: message not sent" : `✕ refused (${tok.status}): message not sent`, "bad");
+          const late = tok.held === "timeout";
+          st.drone.carry(late ? "✕ none in time" : tok.held ? "✕ no token" : tokenError(tok), "err");
+          st.tokens.set(0, late ? "✕ none in time: message not sent" : tok.held ? "✕ none: message not sent"
+            : tok.verdict === "failed" ? "✕ request failed: message not sent"
+            : `✕ refused${tok.status ? ` (${tok.status})` : ""}: message not sent`, "bad");
+          if (!tok.held) showProof(st, tok);
           reply = await got("reply");
-          leg(4, "main", "No valid App Check token: " + (tok.held
-            ? "the SDK didn't even ask, because after a refusal (403) it holds off until the page is reloaded. "
-            : `App Check refused the token request (${tok.status}${tok.debug ? ": this browser's debug token isn't registered" : ""}). `) +
-            "So the Firebase SDK stops here and throws an App Check error. The message is never sent to Google: check the network log.");
+          const why = tok.code === "recaptcha-error" ? "reCAPTCHA couldn't vouch for this page, so the SDK didn't ask for one. "
+            : tok.code === "throttled" ? "the SDK didn't even ask, because after a refusal (403) it holds off until the page is reloaded. "
+            : tok.held ? "App Check gave the SDK none. "
+            : tok.verdict === "failed" ? "the token request never got through to App Check (offline, or blocked on the way, e.g. by a proxy). "
+            : `App Check refused the token request${tok.status ? ` (${tok.status})` : ""}` +
+              `${tok.debug ? ": this browser's debug token isn't registered" : ""}. `;
+          leg(4, "main", late
+            ? "No App Check token came back within main.js's time limit, so generate() stopped waiting. The message is never " +
+              "sent to Google: check the network log."
+            : "No valid App Check token: " + why + "So the Firebase SDK stops here and throws an App Check error. The message " +
+              "is never sent to Google: check the network log.");
           st.bad("main");
           kind = "err"; turnAt = STOP.main;
         } else {
@@ -624,12 +722,14 @@ async function run(msg) {
               leg(8, "gemini", `Gemini (${MODEL}) reads the system instruction and your one message…`);
               st.busy(true); await tw.wait(1200);
               reply = await got("reply");
-              if (out.type === "model-ok") leg(8, "gemini", `Gemini answered in ${out.ms} ms (real time). The reply goes back the same way.`);
-              else {
+              if (out.type === "model-ok") {
+                leg(8, "gemini", `Gemini answered. Real time: generate() took ${fmt(out.ms)} in all, App Check token included ` +
+                  '("Where the time went" below splits it). The reply goes back the same way.');
+              } else {
                 kind = "err";
                 leg(8, "gemini", out.type === "model-empty" ? "Gemini sent an empty reply."
-                  : out.kind === "timeout" ? `No reply after ${Math.round(out.ms / 1000)} s, so the SDK stopped waiting (main.js's time limit).`
-                  : `Gemini returned an error after ${out.ms} ms (${out.kind}).`);
+                  : out.kind === "timeout" ? `No reply after ${Math.round(out.ms / 1000)} s, so main.js stopped waiting (its time limit).`
+                  : `Gemini returned an error (${out.kind}). Real time: generate() took ${fmt(out.ms)} in all.`);
                 st.bad("gemini");
               }
               st.busy(false);

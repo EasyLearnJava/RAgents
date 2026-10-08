@@ -38,26 +38,30 @@ export const MAX_CHARS = 500;
  *   {type: "accepted", chars} then {type: "model-start"} then one of
  *   {type: "model-ok", ms, chars} | {type: "model-empty", ms} | {type: "model-error", ms, kind, message}.
  * @returns {(message: unknown) => Promise<string>} `respond(message)`: always resolves to text to show
- *   in the chat, never rejects.
+ *   in the chat, never rejects (not even when onEvent throws).
  */
 export function createAgent(generate, onEvent = () => {}) {
+  /** Reports a stage. A broken reporter (e.g. a diagram) is logged and never stops the agent from answering. */
+  const report = (event) => {
+    try { onEvent(event); } catch (err) { console.error("onEvent failed:", err); }
+  };
   return async function respond(message) {
     const text = String(message ?? "").trim();
-    if (text === "") { onEvent({ type: "rejected", reason: "empty" }); return "Type something first. Try: Hello"; }
+    if (text === "") { report({ type: "rejected", reason: "empty" }); return "Type something first. Try: Hello"; }
     if (text.length > MAX_CHARS) {
-      onEvent({ type: "rejected", reason: "too-long" });
+      report({ type: "rejected", reason: "too-long" });
       return `That's a long message. Please keep it under ${MAX_CHARS} characters.`;
     }
-    onEvent({ type: "accepted", chars: text.length });
-    onEvent({ type: "model-start" });
+    report({ type: "accepted", chars: text.length });
+    report({ type: "model-start" });
     const t0 = Date.now();
     try {
       const reply = String((await generate(text)) ?? "").trim();
-      if (!reply) { onEvent({ type: "model-empty", ms: Date.now() - t0 }); return "The model sent an empty reply. Please try again."; }
-      onEvent({ type: "model-ok", ms: Date.now() - t0, chars: reply.length });
+      if (!reply) { report({ type: "model-empty", ms: Date.now() - t0 }); return "The model sent an empty reply. Please try again."; }
+      report({ type: "model-ok", ms: Date.now() - t0, chars: reply.length });
       return reply;
     } catch (err) {
-      onEvent({ type: "model-error", ms: Date.now() - t0, kind: errorKind(err), message: String(err?.message ?? err ?? "") });
+      report({ type: "model-error", ms: Date.now() - t0, kind: errorKind(err), message: String(err?.message ?? err ?? "") });
       return friendlyError(err);
     }
   };
@@ -69,10 +73,12 @@ export function createAgent(generate, onEvent = () => {}) {
  * @param {unknown} err The thrown error (or any value).
  * @returns {"appcheck"|"quota"|"busy"|"timeout"|"network"|"other"}
  *   appcheck = rejected by App Check / AI Logic (403); quota = 429; busy = model overloaded (500/503);
- *   timeout = no reply within main.js's time limit; network = never reached Google.
+ *   timeout = no reply within main.js's time limit (or a 504 / DEADLINE_EXCEEDED from Google or a proxy);
+ *   network = never reached Google (also when App Check's token request got no answer: offline, or blocked on the way).
  */
 export function errorKind(err) {
   const msg = String(err?.message ?? err ?? "");
+  if (/fetch-network-error/i.test(msg)) return "network";       // App Check's own request failed, not a refusal
   if (/app.?check|PERMISSION_DENIED|\b403\b/i.test(msg)) return "appcheck";
   if (/RESOURCE_EXHAUSTED|\b429\b|quota|rate.?limit/i.test(msg)) return "quota";
   if (/high demand|overloaded|UNAVAILABLE|\b50[03]\b/i.test(msg)) return "busy";
@@ -97,7 +103,7 @@ export function friendlyError(err) {
       return "The model refused the request because App Check isn't set up (or this browser isn't registered). See the step 2 README.";
     case "quota": return "The free model quota is used up for now. Please try again in a minute.";
     case "busy": return "The model is busy right now (high demand). Please try again in a moment.";
-    case "timeout": return "The model took too long to answer, so the request was stopped. Please try again.";
+    case "timeout": return "No reply came in time, so the page stopped waiting. Google can be slow on the free tier: please try again.";
     case "network": return "Couldn't reach the model. Check your connection and try again.";
     default: return "Something went wrong calling the model: " + String(err?.message ?? err ?? "").slice(0, 160);
   }

@@ -12,6 +12,7 @@
  */
 import { createFlow } from "/lib/flow.js";
 import { MODEL } from "../ai-config.js";
+import { fmt } from "./timing.js";
 
 const SPEC = {
   title: "What happens when you press Send",
@@ -59,11 +60,12 @@ const flow = createFlow(box, SPEC);
 const REQUEST = ["generate", "ailogic", "gemini"];
 const ERRORS = {
   "no-token": { at: ["generate"], note: "no App Check token: not sent", why: "App Check gave this browser no token, so the Firebase SDK stopped before sending anything" },
+  "late-token": { at: ["generate"], note: "no App Check token in time: not sent", why: "no App Check token came back within main.js's time limit, so nothing was sent" },
   appcheck: { at: ["ailogic"], note: "rejected (403)", why: "Firebase AI Logic refused the request: App Check token missing or invalid" },
-  network: { at: ["generate"], note: "couldn't reach Google", why: "the request never reached Google (network/offline)" },
+  network: { at: ["generate"], note: "couldn't reach Google", why: "nothing got through to Google (offline, or blocked on the way)" },
   quota: { at: ["gemini"], note: "quota used up (429)", why: "Gemini's quota limit was reached" },
   busy: { at: ["gemini"], note: "busy (500/503)", why: "Gemini is overloaded right now" },
-  timeout: { at: ["gemini"], note: "no reply in time", why: "no reply came within main.js's time limit, so the SDK stopped waiting" },
+  timeout: { at: ["gemini"], note: "no reply in time", why: "no reply came within main.js's time limit, so main.js stopped waiting" },
   other: { at: ["gemini"], note: "error", why: "the model call failed" },
 };
 let timers = [];                  // lights the boxes in order while the single request is in flight
@@ -94,21 +96,25 @@ function event(e) {
     timers.push(setTimeout(() => flow.set("gemini", "active"), 500));
   } else if (e.type === "model-ok" || e.type === "model-empty") {
     stopTimers();
-    flow.set("generate", "done", "request sent with the token");
+    flow.set("generate", "done", `sent with the token · ${fmt(e.ms)} in all`);
     flow.set("ailogic", "done", "token OK, key added, forwarded");
-    flow.set("gemini", "done", `answered in ${e.ms} ms`);
-    flow.log(`Firebase AI Logic accepted the token and forwarded it; Gemini answered in ${e.ms} ms. It saw only the system instruction and this one message (no history yet).`);
+    flow.set("gemini", "done", "answered");
+    flow.log(`Firebase AI Logic accepted the token and forwarded it; Gemini answered. generate() took ${fmt(e.ms)} in all, ` +
+      `App Check token included (the street view's "Where the time went" splits it). Gemini saw only the system instruction ` +
+      "and this one message (no history yet).");
   } else if (e.type === "model-error") {
     stopTimers();
-    // An App Check error without a request to Google: the SDK got no token and stopped in the browser.
-    if (e.kind === "appcheck" && !sentSince(sentAfter)) outcome = { ...e, kind: "no-token" };
+    // An App Check error or a timeout without a request to Google: no token, so the SDK stopped in the browser.
+    if (!sentSince(sentAfter) && (e.kind === "appcheck" || e.kind === "timeout")) {
+      outcome = { ...e, kind: e.kind === "appcheck" ? "no-token" : "late-token" };
+    }
     const err = ERRORS[outcome.kind] || ERRORS.other;
     for (const id of REQUEST) {
       if (err.at.includes(id)) flow.set(id, "error", err.note);
       else if (REQUEST.indexOf(id) < REQUEST.indexOf(err.at[0])) flow.set(id, "done");
       else flow.set(id, "skip");
     }
-    flow.log(`Failed after ${e.ms} ms: ${err.why}.`, "error");
+    flow.log(`Failed after ${fmt(e.ms)}: ${err.why}.`, "error");
   }
 }
 
@@ -157,10 +163,11 @@ async function reply(text) {
       ["r-ailogic", "done", "200 OK", "Firebase AI Logic sent it back"],
       ["r-generate", "done", "returned empty text", "generate() returned an empty string to respond()"],
       ["r-respond", "done", "→ “try again” message", "respond() returned a “please try again” message instead"]];
-  } else if (err && ["network", "no-token", "timeout"].includes(o.kind)) {   // nothing came back from Google
+  } else if (err && ["network", "no-token", "late-token", "timeout"].includes(o.kind)) {   // nothing came back from Google
     const [note, line] = {
       network: ["threw a network error", "generate() threw a network error (nothing came back)"],
       "no-token": ["threw an App Check error", "generate() threw an App Check error before sending anything"],
+      "late-token": ["timed out before sending", "generate() timed out waiting for the App Check token: nothing was sent"],
       timeout: ["timed out", "generate() threw a timeout error: no reply in time"],
     }[o.kind];
     steps = [["r-gemini", "skip"], ["r-ailogic", "skip"], ["r-generate", "error", note, line],

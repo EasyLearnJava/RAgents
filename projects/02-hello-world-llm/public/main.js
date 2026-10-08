@@ -15,8 +15,8 @@ import { FIREBASE_CONFIG, MODEL, RECAPTCHA_SITE_KEY } from "./ai-config.js";
 import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
 
 /**
- * How long to wait for a reply, App Check token included. Generous on purpose: free-tier replies can take 20 seconds
- * or more. The Firebase SDK's own default is 3 minutes.
+ * How long to wait for a reply: the whole call, App Check token included (enforced in generate() below). Generous on
+ * purpose: free-tier replies can take 20 seconds or more. The Firebase SDK's own default is 3 minutes.
  */
 const REPLY_TIMEOUT_MS = 90_000;
 
@@ -61,10 +61,21 @@ export async function startAgent(onEvent) {
   // GoogleAIBackend = the Gemini Developer API (works on the free Spark plan).
   // Limited-use tokens are single-use, so a captured token can't be replayed by someone else.
   const ai = getAI(app, { backend: new GoogleAIBackend(), useLimitedUseAppCheckTokens: true });
-  // No reply in time: the SDK cancels the request and throws, and respond() shows "The model took too long…".
-  const model = getGenerativeModel(ai, { model: MODEL, systemInstruction: SYSTEM_INSTRUCTION }, { timeout: REPLY_TIMEOUT_MS });
+  const model = getGenerativeModel(ai, { model: MODEL, systemInstruction: SYSTEM_INSTRUCTION });
 
-  // One message in, one reply out. No history yet: that's step 3.
-  const generate = async (text) => (await model.generateContent(text)).response.text();
+  // One message in, one reply out (no history yet: that's step 3), within REPLY_TIMEOUT_MS for the whole call: App Check
+  // token, request and reply. The SDK's own `timeout` option only cancels the final request, so it can't stop a stuck
+  // App Check step; this limit can. Running out throws a "Timed out" error, which respond() turns into a friendly message.
+  const generate = async (text) => {
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(new DOMException(`Timed out: no reply within ${REPLY_TIMEOUT_MS / 1000} s`, "TimeoutError")),
+      REPLY_TIMEOUT_MS);
+    const gaveUp = new Promise((_, reject) => stop.signal.addEventListener("abort", () => reject(stop.signal.reason), { once: true }));
+    try {
+      return (await Promise.race([model.generateContent(text, { signal: stop.signal }), gaveUp])).response.text();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   return { ready: true, model: MODEL, respond: createAgent(generate, onEvent) };
 }

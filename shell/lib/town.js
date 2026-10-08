@@ -709,6 +709,21 @@ ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t
 .st-debug .st-label { margin: 0; font-weight: 900; }
 .st-life { margin: 4px 0 0; }
 .st-tls { background: color-mix(in srgb, var(--you) 10%, var(--card)); }
+.st-timing { margin-top: 10px; border: 3px solid var(--ink); border-radius: 16px; padding: 10px 14px; font-size: .84rem; }
+.st-timing .st-label { margin: 0 0 6px; font-weight: 900; }
+.st-tbar { display: flex; height: 22px; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.st-tbar span { min-width: 3px; transition: flex-grow .25s; } .st-tbar span + span { border-left: 1.5px solid var(--card); }
+.st-tbar .browser, .st-tlist .browser i { background: var(--you); } .st-tbar .google, .st-tlist .google i { background: var(--bot); }
+.st-tbar .both, .st-tlist .both i { background: repeating-linear-gradient(135deg, var(--you) 0 4px, var(--bot) 4px 8px); }
+.st-tbar .live, .st-tlist .live i { animation: st-wait .9s ease-in-out infinite alternate; }
+@keyframes st-wait { to { opacity: .45; } }
+.st-tlist { list-style: none; margin: 8px 0 0; padding: 0; max-width: 56rem; }
+.st-tlist li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 64px 40px; gap: 4px 10px; align-items: baseline; padding: 3px 0; }
+.st-tlist i { align-self: start; margin-top: 4px; width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--ink); }
+.st-tlist .wh, .st-tlist .pc { color: var(--muted); } .st-tlist b, .st-tlist .pc { text-align: right; font-variant-numeric: tabular-nums; }
+.st-tlist .total { border-top: 1.5px dashed var(--muted); margin-top: 3px; padding-top: 6px; font-weight: 800; } .st-tlist .total i { border: 0; }
+@media (max-width: 640px) { .st-tlist li { grid-template-columns: 12px minmax(0, 1fr) 60px 36px; }
+  .st-tlist .wh { grid-column: 2; grid-row: 2; } .st-tlist .wh:empty { display: none; } }
 .st-pad { fill: #4a4a50; stroke: var(--lamp); stroke-width: 3; } .st-padh { fill: var(--lamp); font-weight: 900; }
 .st-banner .bt { font-weight: 900; letter-spacing: .08em; fill: var(--ink); } .st-banner .bs { font-weight: 700; fill: var(--muted); }
 .st-vault { fill: #6b6f7a; }
@@ -733,7 +748,8 @@ ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t
 .st-track li.done::after, .st-track li.active::after { background: var(--you); opacity: 1; }
 .st-track li.skip { opacity: .35; }
 .st-now { margin: 10px 0 0; padding: 8px 12px; border: 2px dashed var(--muted); border-radius: 12px; font-size: .88rem; min-height: 2.7em; }
-@media (prefers-reduced-motion: reduce) { .busy .st-smoke circle, .busy .st-spark, .sending .st-antenna circle, .st-drone .rotor { animation: none; opacity: .8; } }
+@media (prefers-reduced-motion: reduce) { .busy .st-smoke circle, .busy .st-spark, .sending .st-antenna circle, .st-drone .rotor,
+  .st-tbar .live, .st-tlist .live i { animation: none; opacity: .8; } .st-tbar span { transition: none; } }
 `;
 
 /** Adds the street-view styles to the page (once). */

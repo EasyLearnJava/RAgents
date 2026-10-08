@@ -28,12 +28,25 @@ test("step 2: model errors become friendly messages", async () => {
   assert.match(await fail("429 RESOURCE_EXHAUSTED")("Hi"), /quota/);
   assert.match(await fail("[500 ] This model is currently experiencing high demand.")("Hi"), /busy/);
   assert.match(await fail("Failed to fetch")("Hi"), /reach the model/);
-  assert.match(await fail("Timeout has expired.")("Hi"), /too long/);
+  assert.match(await fail("Timeout has expired.")("Hi"), /in time/);
+  assert.match(await fail("Timed out: no reply within 90 s")("Hi"), /in time/);   // main.js's own limit
   assert.match(await fail("boom")("Hi"), /Something went wrong.*boom/);
 });
 
 test("step 2: an empty model reply is handled", async () => {
   assert.match(await createAgent(async () => "")("Hi"), /empty reply/);
+});
+
+test("step 2: a broken event reporter never stops the reply", async () => {
+  const quiet = console.error;
+  console.error = () => {};                            // the failure is logged; keep the test output clean
+  try {
+    const respond = createAgent(async () => "Hi!", () => { throw new Error("broken diagram"); });
+    assert.equal(await respond("Hello"), "Hi!");
+    assert.match(await respond("   "), /Type something/);
+  } finally {
+    console.error = quiet;
+  }
 });
 
 test("step 2: events describe each stage (they drive the flow diagram)", async () => {
@@ -47,6 +60,10 @@ test("step 2: events describe each stage (they drive the flow diagram)", async (
   assert.equal(failed.at(-1).kind, "quota");
   assert.equal(errorKind("Failed to fetch"), "network");
   assert.equal(errorKind("403 PERMISSION_DENIED"), "appcheck");
+  assert.equal(errorKind("AppCheck: 403 error. Attempts allowed again after 01d:00m:00s (appCheck/initial-throttle)."), "appcheck");
+  // App Check's token request got no answer (offline, or blocked by a proxy): a network problem, not a refusal.
+  assert.equal(errorKind("AppCheck: Fetch failed to connect to a network. Check Internet connection. " +
+    "Original error: Failed to fetch. (appCheck/fetch-network-error)."), "network");
   assert.equal(errorKind({ name: "AbortError", message: "Timeout has expired." }), "timeout");   // the SDK's time limit
 });
 
