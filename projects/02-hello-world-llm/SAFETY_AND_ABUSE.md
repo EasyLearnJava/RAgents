@@ -100,8 +100,9 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
     kept returning `429` and `500`.
   - `friendlyError()` in `public/agent.js` turns `403`, `429`, `500`/`503`, timeouts and network errors into clear messages
     (tested in `test/agent.test.js`).
-  - A 30-second time limit (`REPLY_TIMEOUT_MS` in `public/main.js`): if no reply comes, the request is stopped and the chat
-    says the model took too long, instead of "thinking…" waiting for the SDK's default of 3 minutes.
+  - A 90-second time limit (`REPLY_TIMEOUT_MS` in `public/main.js`; free-tier replies can take 20 seconds or more): if no
+    reply comes, the request is stopped and the chat says the model took too long, instead of "thinking…" waiting for the
+    SDK's default of 3 minutes.
 - **Note:** nothing of ours goes down. These are Google's servers saying "not right now".
 
 ### 10. The model's reply contains HTML or script (prompt injection → XSS)

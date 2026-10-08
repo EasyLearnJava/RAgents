@@ -14,8 +14,11 @@ import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.
 import { FIREBASE_CONFIG, MODEL, RECAPTCHA_SITE_KEY } from "./ai-config.js";
 import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
 
-/** How long to wait for a reply, App Check token included. The Firebase SDK's own default is 3 minutes. */
-const REPLY_TIMEOUT_MS = 30_000;
+/**
+ * How long to wait for a reply, App Check token included. Generous on purpose: free-tier replies can take 20 seconds
+ * or more. The Firebase SDK's own default is 3 minutes.
+ */
+const REPLY_TIMEOUT_MS = 90_000;
 
 /**
  * Finds the Firebase web config: FIREBASE_CONFIG from ai-config.js if set, otherwise

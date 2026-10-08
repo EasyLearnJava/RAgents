@@ -7,7 +7,7 @@ It matches *Step 1 · Hello World agent* in the notes, with Gemini in place of O
 |---|---|
 | `project.json` | Title, summary and "next" for the site's left nav |
 | `public/agent.js` | Pure logic: input checks, call the model, friendly errors. No Firebase imports, so it's testable |
-| `public/main.js` | Firebase wiring: config → App Check → AI Logic → model. A fresh single-use App Check token for every message, no cached (hourly) token, and a 30-second time limit for replies |
+| `public/main.js` | Firebase wiring: config → App Check → AI Logic → model. A fresh single-use App Check token for every message, no cached (hourly) token, and a 90-second time limit for replies |
 | `public/ai-config.js` | **The only file you edit:** model name and App Check site key (neither is secret) |
 | `public/index.html` | Chat window with a status badge and a "thinking…" bubble |
 | `public/style.css` | How the chat page looks |

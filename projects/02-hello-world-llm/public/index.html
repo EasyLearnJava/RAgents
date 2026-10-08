@@ -46,8 +46,9 @@
         <li><b>A fast model:</b> Flash-Lite (name in the green badge) answers quickest and has the most free-tier headroom.</li>
         <li><b>Errors become plain messages</b>, never a crash: 403 App Check refused, 429 quota used up, 500/503 model busy,
           no reply in time, network unreachable. <code>respond()</code> always returns text, so the page can't get stuck on a failure.</li>
-        <li><b>A time limit:</b> if no reply comes within 30 seconds, <code>main.js</code> stops waiting and you see "The model
-          took too long…". Without it, the Firebase SDK would wait 3 minutes.</li>
+        <li><b>A time limit:</b> if no reply comes within 90 seconds, <code>main.js</code> stops waiting and you see "The model
+          took too long…". Free-tier replies can take 20 seconds or more, so the limit is generous; without it, the Firebase
+          SDK would wait 3 minutes.</li>
         <li><b>Timing:</b> the street view and the diagram below show how many milliseconds the model took.</li>
       </ul>
     </details>
