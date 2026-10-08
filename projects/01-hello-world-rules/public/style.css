@@ -4,10 +4,12 @@
   :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px;
+/* The chat and the diagram sit side by side; when there isn't room, the diagram wraps under the chat. */
+body { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 24px; padding: 24px 16px;
        background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
-.chat { width: 100%; max-width: 520px; background: var(--card); border: 3px solid var(--ink);
+.chat { flex: 0 1 420px; min-width: 0; background: var(--card); border: 3px solid var(--ink);
         border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
+.diagram { flex: 1 1 560px; min-width: 0; }
 header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem; }
 header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
 #log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
