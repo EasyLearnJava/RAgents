@@ -142,8 +142,8 @@ sequenceDiagram
   participant G as Gemini
   B->>R: score this visitor (site key, only our domains)
   R-->>B: reCAPTCHA token
-  B->>AC: exchange for an App Check token (single-use)
-  B->>AI: message + App Check token
+  B->>AC: exchange for an App Check token (on page load; cached, renewed hourly)
+  B->>AI: message + the cached App Check token
   AI->>AI: reject if the token is invalid (enforced)
   AI->>G: message + Gemini key (server side)
   G-->>B: reply, shown as plain text
@@ -223,6 +223,9 @@ Once the site is running, the key's Overview shows **Protected**:
 5. Check that **App Check → APIs → Firebase AI Logic** shows **Enforced**:
 
 ![App Check APIs enforced](images/12-app-check-apis-enforced.jpg)
+
+   **Basic - Enforced** is baseline protection. Leave **replay protection** unenforced (monitoring only): step 2 sends
+   App Check's hourly token, which AI Logic refuses when replay protection is enforced.
 
 ## 9. Commit, push, deploy and test
 
@@ -307,7 +310,7 @@ Steps: **Google Cloud → APIs & Services → Credentials → Browser key (auto 
 | `firebase deploy` → `ERR_REQUIRE_ESM … build.mjs not supported` and `Node.js v20.18.2` | Run from the standalone "Firebase CLI" window, which bundles an old Node | Use a normal Command Prompt (Node 22) with the npm-installed `firebase` |
 | `npm test` fails with a "test/" path error | Node 22's `--test` doesn't take a folder | The script is just `node --test` (it finds `*.test.js`) |
 | Step 2 says "Setup needed: add your App Check reCAPTCHA site key…" after deploying | Browser cached the old `ai-config.js` (Hosting allowed 1 hour of caching) | Ctrl+Shift+R. Fixed for good with `no-cache` headers in `firebase.json` |
-| "The model refused the request because App Check isn't set up" (`403 PERMISSION_DENIED`) | App Check not registered or not enforced, or the domain isn't on the reCAPTCHA key | Re-check steps 6–8; wait a few minutes after enforcing |
+| "The request was refused (403): App Check didn't accept this page's token" (`403 PERMISSION_DENIED`) | App Check not registered or not enforced, the domain isn't on the reCAPTCHA key, or AI Logic's replay protection is enforced (it refuses step 2's hourly token) | Re-check steps 6–8; set replay protection to unenforced; wait a few minutes after enforcing, then reload the page |
 | "The free model quota is used up for now" (`429`) | Free-tier limit for that model reached | Wait a minute, or use `gemini-3.5-flash-lite` |
 | "The model is busy right now" (`500`/`503`, "high demand") | Google-side load on that model | Retry later, or use `gemini-3.5-flash-lite` |
 | `404 … model is no longer available` / `not found` | Model retired or not offered on the free tier | Pick a current model and set `MODEL` in `ai-config.js` |

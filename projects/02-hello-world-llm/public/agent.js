@@ -74,7 +74,7 @@ export function createAgent(generate, onEvent = () => {}) {
  * @returns {"appcheck"|"quota"|"busy"|"timeout"|"network"|"other"}
  *   appcheck = rejected by App Check / AI Logic (403); quota = 429; busy = model overloaded (500/503);
  *   timeout = no reply within main.js's time limit (or a 504 / DEADLINE_EXCEEDED from Google or a proxy);
- *   network = never reached Google (also when App Check's token request got no answer: offline, or blocked on the way).
+ *   network = never reached Google (offline, or blocked on the way).
  */
 export function errorKind(err) {
   const msg = String(err?.message ?? err ?? "");
@@ -100,7 +100,7 @@ export function errorKind(err) {
 export function friendlyError(err) {
   switch (errorKind(err)) {
     case "appcheck":
-      return "The model refused the request because App Check isn't set up (or this browser isn't registered). See the step 2 README.";
+      return "The request was refused (403): App Check didn't accept this page's token. See \"If App Check refuses (403)\" in the step 2 README.";
     case "quota": return "The free model quota is used up for now. Please try again in a minute.";
     case "busy": return "The model is busy right now (high demand). Please try again in a moment.";
     case "timeout": return "No reply came in time, so the page stopped waiting. Google can be slow on the free tier: please try again.";

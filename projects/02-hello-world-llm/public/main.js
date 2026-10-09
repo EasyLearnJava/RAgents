@@ -9,14 +9,14 @@
  * The page (index.html) calls startAgent() once, then respond(message) for each message.
  */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
+import { getToken, initializeAppCheck, onTokenChanged, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
 import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
 import { FIREBASE_CONFIG, MODEL, RECAPTCHA_SITE_KEY } from "./ai-config.js";
 import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
 
 /**
- * How long to wait for a reply: the whole call, App Check token included (enforced in generate() below). Generous on
- * purpose: free-tier replies can take 20 seconds or more. The Firebase SDK's own default is 3 minutes.
+ * How long to wait for a reply: the whole call (enforced in generate() below), including any wait for an App Check
+ * token. Generous on purpose: free-tier replies can take 20 seconds or more. The Firebase SDK's own default is 3 minutes.
  */
 const REPLY_TIMEOUT_MS = 90_000;
 
@@ -37,12 +37,31 @@ async function loadFirebaseConfig() {
 }
 
 /**
+ * When an App Check token was issued and when it expires, read from the token itself (a signed JWT whose middle part
+ * is plain JSON). Only these two times leave this file: the token is a credential and is never shown.
+ *
+ * @param {string} jwt An App Check token.
+ * @returns {{issuedAt?: number, expiresAt?: number}} Times in milliseconds, or {} if it can't be read.
+ */
+function tokenTimes(jwt) {
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, "=")));
+    return { issuedAt: claims.iat * 1000, expiresAt: claims.exp * 1000 };
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Connects to the model once and returns the agent.
  *
  * If setup is incomplete it does not throw: it returns ready=false, and respond() replies with
  * the setup instruction, so the page can show it in the chat.
  *
- * @param {(event: object) => void} [onEvent] Optional stage reporter for the diagrams (see createAgent in agent.js).
+ * @param {(event: object) => void} [onEvent] Optional stage reporter for the diagrams (see createAgent in agent.js). It also
+ *   gets {type: "token", issuedAt, expiresAt} for the cached App Check token (fetched, loaded or renewed) and
+ *   {type: "token-error", message} when App Check can't give one.
  * @returns {Promise<{ready: boolean, model: string, respond: (message: unknown) => Promise<string>}>}
  */
 export async function startAgent(onEvent) {
@@ -55,17 +74,29 @@ export async function startAgent(onEvent) {
   if (["localhost", "127.0.0.1"].includes(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
 
   const app = initializeApp(config);
-  // App Check must start before the first model call. No auto-refresh: we keep no cached (hourly) token, because
-  // every model call gets its own single-use token (below). See "Hourly token or a fresh one each time?" in the README.
-  initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: false });
+  // App Check must start before the first model call. One hourly token: fetched when the page loads (unless one saved
+  // in this browser is still fresh), cached in the browser and renewed in the background about 35 minutes into its hour.
+  // See "Hourly token or a fresh one each time?" in the README.
+  const appCheck = initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true });
+  // Optional: tell the page about the cached token (its times only), so the street view can show when it expires.
+  // getToken() reports the first one (it waits for the request App Check is already making, so it adds none);
+  // onTokenChanged() reports renewals (in debug mode only after a reload: the SDK doesn't announce new debug tokens).
+  if (onEvent) {
+    const report = (t) => onEvent({ type: "token", ...tokenTimes(t.token) });
+    const failed = (err) => onEvent({ type: "token-error", message: String(err?.message ?? err) });
+    onTokenChanged(appCheck, report, failed);
+    getToken(appCheck).then(report, failed).catch((err) => console.error("onEvent failed:", err));
+  }
   // GoogleAIBackend = the Gemini Developer API (works on the free Spark plan).
-  // Limited-use tokens are single-use, so a captured token can't be replayed by someone else.
-  const ai = getAI(app, { backend: new GoogleAIBackend(), useLimitedUseAppCheckTokens: true });
+  // useLimitedUseAppCheckTokens: false = every request carries the cached hourly token, so no message makes a token
+  // request of its own (true would fetch a fresh single-use token for every request).
+  const ai = getAI(app, { backend: new GoogleAIBackend(), useLimitedUseAppCheckTokens: false });
   const model = getGenerativeModel(ai, { model: MODEL, systemInstruction: SYSTEM_INSTRUCTION });
 
-  // One message in, one reply out (no history yet: that's step 3), within REPLY_TIMEOUT_MS for the whole call: App Check
-  // token, request and reply. The SDK's own `timeout` option only cancels the final request, so it can't stop a stuck
-  // App Check step; this limit can. Running out throws a "Timed out" error, which respond() turns into a friendly message.
+  // One message in, one reply out (no history yet: that's step 3), within REPLY_TIMEOUT_MS for the whole call. A message
+  // only waits for an App Check token if the cached one is missing or expired. The SDK's own `timeout` option only cancels
+  // the final request, so it can't stop a stuck App Check step; this limit can. Running out throws a "Timed out" error,
+  // which respond() turns into a friendly message.
   const generate = async (text) => {
     const stop = new AbortController();
     const timer = setTimeout(() => stop.abort(new DOMException(`Timed out: no reply within ${REPLY_TIMEOUT_MS / 1000} s`, "TimeoutError")),

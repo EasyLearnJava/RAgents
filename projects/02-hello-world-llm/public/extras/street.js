@@ -13,17 +13,18 @@
  * that's too long turns back inside your browser, a 403 stops at App Check's gate, and the car waits at Gemini for
  * the real reply. The network log under the scene lists the page's real requests (Resource Timing).
  *
- * App Check tokens get their own courier drone, because fetching one is a separate trip to Google: for each message
- * the Firebase SDK fetches a fresh single-use token (useLimitedUseAppCheckTokens), which travels with the request.
- * main.js keeps no cached token (auto-refresh is off), so nothing is fetched on page load. The drone shows the real
- * result of each token request (its HTTP status, from Resource Timing). If App Check refuses it (locally: an
- * unregistered debug token comes back 403), it never gets through (offline, or blocked on the way), or the SDK doesn't
- * even ask (after a 403 it holds off until the page is reloaded), the SDK throws before sending anything; if no token
- * comes back within main.js's time limit, generate() stops waiting. Either way the car turns back at main.js: the
- * message never leaves your browser.
+ * App Check tokens get their own courier drone, because fetching one is a separate trip to Google. main.js uses App
+ * Check's hourly token: the Firebase SDK fetches it when the page loads (unless one saved in this browser is still
+ * fresh), keeps it and renews it in the background about 35 minutes into its hour. Every message carries that 🎫, so a
+ * message normally makes no token request at all: the drone flies on page load, and only flies for a message that finds
+ * no valid token. It shows the real result of each token request (its HTTP status, from Resource Timing). Without a
+ * valid token (App Check refused one, locally an unregistered debug token comes back 403, or the request never got
+ * through) the SDK still sends the message, with a placeholder token in its place, and App Check's gate refuses it
+ * (403). Only if no token comes back within main.js's time limit does generate() stop waiting: then the car turns back
+ * at main.js and the message never leaves your browser.
  *
- * The token board above your browser shows the single-use 🎟️ that rides with each message, and what proves the page
- * to App Check: locally the debug token, live reCAPTCHA.
+ * The token board above your browser shows the cached 🎫 and when it expires (from main.js's optional {type: "token"}
+ * events, which carry only its times), and what proves the page to App Check: locally the debug token, live reCAPTCHA.
  * Locally, a panel under the scene explains the debug token: where and when it's made, what it's for, how long it lasts.
  *
  * Under the tracker, "Where the time went" shows the real time of each stage (the sums are in timing.js): the street
@@ -37,7 +38,7 @@
  */
 import * as t from "/lib/town.js";
 import { MODEL } from "../ai-config.js";
-import { appCheckCode, fmt, stages, tokenVerdict } from "./timing.js";
+import { fmt, stages, tokenVerdict } from "./timing.js";
 
 const { svg, box, house, depot, factory, chimney, tree, lamp, road, curve, lanes, depthLayer, pin, boom, board,
   vehicle, courier, tracker, card, el, paneX, paneY, banner, iso } = t;
@@ -84,9 +85,9 @@ function build() {
   t.ensureStyles();
   const ui = card("Street view: your message leaves the browser",
     "The car carries your message out of your browser, over the HTTPS bridge across the internet and into Google Cloud, then " +
-    "brings the reply back. It stops where each piece runs and follows what really happens, including errors. The drone fetches a " +
-    "fresh single-use App Check token before each message. Everything is slowed down so you can follow it; the real times are " +
-    "under the tracker, in \"Where the time went\" (a free-tier reply can take 20 s or more, mostly waiting for Google).",
+    "brings the reply back. It stops where each piece runs and follows what really happens, including errors. The drone fetches " +
+    "App Check's hourly token when the page loads, and every message carries it. Everything is slowed down so you can follow it; " +
+    "the real times are under the tracker, in \"Where the time went\" (a free-tier reply can take 20 s or more, mostly waiting for Google).",
     "Street view of one message's trip to Gemini and back");
   performance.setResourceTimingBufferSize?.(1000);   // the network log, token checks and timings read it; the default keeps 250
   // When it's full, make room instead of losing entries (the browser then adds the ones that were waiting).
@@ -200,8 +201,9 @@ function build() {
   const count = el("b", "", "0");
   const head = el("p", "st-label"); head.append("Network log · real requests this page made since your first message: ", count);
   const list = el("ol", "st-log");
-  log.append(head, list, el("p", "st-note", "From your browser's own record (Resource Timing). Hosts ending in googleapis.com are Google Cloud; " +
-    "the App Check token comes from reCAPTCHA and App Check before each model call."));
+  log.append(head, list, el("p", "st-note", "From your browser's own record (Resource Timing). Hosts ending in googleapis.com are Google Cloud. " +
+    "The App Check token was fetched when the page loaded and is renewed about every 35 minutes, so a message normally makes " +
+    "one request: the one to Gemini."));
   const timing = timingPanel(), tls = tlsPanel();
   const debug = LOCAL ? debugPanel() : null;
   ui.card.append(root, track.el, ui.now, timing.el, tls.el, ...(debug ? [debug.el] : []), log);
@@ -247,7 +249,7 @@ function build() {
 }
 
 /**
- * The token board above your browser: the single-use token, and what proves the page to App Check
+ * The token board above your browser: the hourly token, and what proves the page to App Check
  * (locally the debug token, live reCAPTCHA). set(row, status, kind) updates a row; kind: "ok", "bad", "wait", "used".
  */
 function tokenBoard(parent, [x, y]) {
@@ -255,8 +257,8 @@ function tokenBoard(parent, [x, y]) {
   svg("rect", { width: W, height: 200, rx: 18 }, g);
   t.label(g, 24, 42, "App Check tokens in this browser", "tt", "start", 30);
   const spec = [
-    ["🎟️", "Single-use token", "a new one for every message · rides with it · spent when Google checks it"],
-    LOCAL ? ["🔑", "Debug token (the proof)", "this browser's ID for local testing · swapped for the token above · never expires"]
+    ["🎫", "Hourly token", "fetched on page load · cached · renewed every ~35 min · rides with every message"],
+    LOCAL ? ["🔑", "Debug token (the proof)", "this browser's ID for local testing · swapped for the 🎫 above · never expires"]
       : ["🤖", "reCAPTCHA token (the proof)", "made fresh for each token request · only works on the allowed domains"],
   ];
   const rows = spec.map(([icon, name, note], i) => {
@@ -267,7 +269,7 @@ function tokenBoard(parent, [x, y]) {
     return { row, status };
   });
   const set = (i, text, kind = "") => { rows[i].status.textContent = text; rows[i].row.setAttribute("class", "st-trow " + kind); };
-  set(0, "none yet"); set(1, LOCAL ? "checked on your first message" : "—");
+  set(0, "none yet"); set(1, LOCAL ? "checked when the page loads" : "—");
   return { set };
 }
 
@@ -280,7 +282,7 @@ function debugPanel() {
     ["Stored", `in this browser's storage (IndexedDB) for ${location.host}, so every reload uses the same one.`],
     ["Printed", 'in the browser console on every load: F12 → Console, filter "debug token".'],
     ["Registered", "by you, once: Firebase console → App Check → Apps → ragents-web → ⋮ → Manage debug tokens → Add."],
-    ["Used", "on every token trip: shown to App Check instead of reCAPTCHA and swapped for a 🎟️ token, once per message."],
+    ["Used", "on every token trip (page load, then about every 35 minutes): shown to App Check instead of reCAPTCHA and swapped for the 🎫 hourly token."],
   ];
   const ol = el("ol", "st-steps");
   const items = steps.map(([title, text], i) => {
@@ -292,7 +294,8 @@ function debugPanel() {
   const state = el("span", "state", "");
   items[3].append(state);
   box.append(ol, el("p", "st-life", "Lifespan: the debug token itself never expires. It lasts until you delete it in the Firebase console " +
-    "or clear this site's data; another browser, profile or address makes a new one. The 🎟️ tokens it gets are spent on first use. " +
+    "or clear this site's data; another browser, profile or address makes a new one. The 🎫 tokens it gets expire (an hour by " +
+    "default) and are renewed in the background. " +
     "Keep it secret: while it's registered, anyone who has it can pass App Check from any machine."));
   for (const li of items.slice(0, 3)) li.className = "done";
   return {
@@ -488,19 +491,20 @@ const modelRequests = (t0) => performance.getEntriesByType("resource")
   .filter((e) => e.startTime >= t0 && e.name.includes("firebasevertexai.googleapis.com"));
 
 /**
- * Waits up to `ms` for a token exchange that started after t0, or less once outcome() says the model call is over (any
- * token request would show by then). Returns { status, debug, verdict } or null: status is null when the browser
- * doesn't report it, and verdict is timing.js's tokenVerdict(): "ok", "refused" or "failed" (it never got through).
+ * Waits up to `ms` for a token exchange that started after t0, or less once done() says there's nothing more to wait
+ * for (a token request would show by then). Returns { status, debug, verdict } or null: status is null when the
+ * browser doesn't report it, and verdict is timing.js's tokenVerdict(): "ok", "refused" or "failed" (it never got
+ * through).
  */
-async function tokenResult(tw, t0, ms, outcome) {
+async function tokenResult(tw, t0, ms, done) {
   let until = performance.now() + ms;
   for (;;) {
     const e = tokenRequests(t0).at(-1);
     if (e) {
       const status = e.responseStatus ?? null;
-      return { status, debug: e.name.includes("exchangeDebugToken"), verdict: tokenVerdict(status, outcome()) };
+      return { status, debug: e.name.includes("exchangeDebugToken"), verdict: tokenVerdict(status) };
     }
-    if (outcome()) until = Math.min(until, performance.now() + 400);
+    if (done()) until = Math.min(until, performance.now() + 400);
     if (performance.now() > until) return null;
     await new Promise((r) => setTimeout(r, 150));
     tw.alive();
@@ -510,24 +514,127 @@ async function tokenResult(tw, t0, ms, outcome) {
 /** What the drone shows for a token request that brought no token. */
 const tokenError = (r) => (r.verdict === "failed" ? "✕ failed" : `✕ ${r.status || "refused"}`);
 
+/** Why App Check gave no token, in a few words, from the App Check SDK's error message (main.js passes it on). */
+function tokenProblem(message = "") {
+  if (/recaptcha-error/.test(message)) return "reCAPTCHA couldn't vouch";
+  if (/fetch-network-error/.test(message)) return "request didn't get through";
+  const status = /\b([45]\d\d)\b/.exec(message)?.[1];
+  return status ? `refused (${status})` : "App Check gave none";
+}
+
 /**
- * The courier's round trip for a token: fly to App Check's gate, wait for the real result (or show the recorded
- * one on a replay), show it, fly home. Returns the result.
+ * The courier's round trip for a token request that has already been answered (`r`): fly to App Check's gate, show
+ * the result, fly home.
  */
-async function fetchToken(st, tw, t0, icon, label, recorded, outcome) {
+async function fetchToken(st, tw, label, r) {
   const { drone } = st;
   drone.place(...DRONE_HOME); drone.carry("🔒 " + label, "lock");     // a request of its own, over HTTPS: locked in flight
   await drone.fly(tw, DRONE_GATE);
-  const r = recorded !== undefined ? recorded : await tokenResult(tw, t0, 6000, outcome);
-  const ok = !r || r.verdict === "ok", result = ok ? (r ? `${icon} token` : `${icon} ?`) : tokenError(r);
+  const ok = r.verdict === "ok", result = ok ? "🎫 token" : tokenError(r);
   drone.carry(result, ok ? "ok" : "err");
-  if (r?.verdict === "refused") st.bad("appcheck");                 // "failed" never reached App Check
+  if (r.verdict === "refused") st.bad("appcheck");                  // "failed" never reached App Check
   showProof(st, r);
   await tw.wait(800);
   drone.carry("🔒 " + result, "lock");
   await drone.fly(tw, DRONE_HOME);
   drone.carry(result, ok ? "ok" : "err");
-  return r;
+}
+
+/**
+ * On page load the SDK gets the hourly token before you type anything: a fresh one saved in this browser (no request),
+ * or a new one from Google, which the drone fetches. A saved one that's due for renewal is renewed straight away.
+ */
+async function pageLoadToken() {
+  const st = scene, tw = st.play.begin();
+  try {
+    st.stop(null, "main");
+    st.say("Page load: App Check starts. The Firebase SDK needs an hourly token (🎫): a fresh one saved in this browser, " +
+      "or a new one from Google…");
+    // The page-load token request, if any. main.js's token events say when there's nothing more to wait for.
+    const r = await tokenResult(tw, 0, 10000, () => cached.state === "error" || (cached.state === "ok" && !renewalDue()));
+    if (r) await fetchToken(st, tw, "page load: 🎫?", r);
+    st.stop(null, null);
+    if (r ? r.verdict === "ok" : cached.state === "ok") {
+      if (!r) { st.tokens.set(1, LOCAL ? "✓ registered" : "not needed: the 🎫 was saved", "ok"); st.debug?.registered(true); }
+      st.say(r ? "Page load: App Check issued an hourly token (🎫) and the SDK cached it in this browser. Every message carries " +
+          "it, so messages make no token request; it's renewed in the background about 35 minutes in. Send a message to watch."
+        : "Page load: a fresh hourly token (🎫) was already saved in this browser, so there's no token request: the drone stays " +
+          "home. Every message carries it. Send a message to watch.");
+    } else if (r || cached.state === "error") {
+      const why = !r ? `App Check gave none (${tokenProblem(cached.error)})`
+        : r.verdict === "failed" ? "the token request never got through (offline, or blocked on the way)"
+        : r.debug ? "App Check refused this browser's debug token (403): it isn't registered in the Firebase console"
+        : `App Check refused the token request (${r.status || "refused"})`;
+      st.say(`Page load: no hourly token: ${why}. Until there is one, messages go out with a placeholder token and App ` +
+        `Check refuses them (403)${r?.debug ? ': see "Testing on your own machine" in the step 2 README' : ""}.`);
+    } else st.say("Page load: no App Check token yet.");
+  } catch (err) {
+    if (err !== t.STOPPED) throw err;
+  }
+}
+
+/**
+ * How this message gets its App Check token, shown at main.js (live, or from the recording on a replay). Usually the
+ * cached 🎫 rides along and the drone stays home. Without a valid one the SDK asks for a new one first (the drone flies),
+ * and if it gets none it sends a placeholder instead. Returns "cached", "new", "placeholder" or "late" (no token within
+ * main.js's time limit, so nothing was sent).
+ */
+async function messageToken(st, tw, msg, got) {
+  if (!msg.replay) {
+    let r = null, use;
+    if (!tokenValid() || tokenRequests(msg.t0).length) {
+      // After a refusal the SDK holds off (no request); otherwise it asks App Check for a new token first.
+      if (!(cached.state === "error" && /throttl/.test(cached.error))) {
+        st.say("generate(text) calls model.generateContent(text). There's no valid hourly token in this browser, so the SDK " +
+          `gets one first (${LOCAL ? "the debug token" : "reCAPTCHA"} vouches for this page, App Check swaps that for a 🎫)…`);
+      }
+      r = await tokenResult(tw, msg.t0, 6000, () => msg.seen.outcome);
+    }
+    if (r) use = r.verdict === "ok" ? "new" : "placeholder";
+    else if (tokenValid()) use = "cached";
+    else {
+      const out = await got("outcome");             // no token request: the SDK used what it had, or gave up waiting
+      use = out.kind === "timeout" && !modelRequests(msg.t0).length ? "late" : cached.state === "error" ? "placeholder" : "cached";
+    }
+    // Locally the SDK doesn't announce new tokens (see main.js), so note that this browser has one now.
+    if (use === "new" && cached.state !== "ok") Object.assign(cached, { state: "ok", issuedAt: null, expiresAt: null, error: "" });
+    msg.seen.token = { use, r, problem: cached.state === "error" ? cached.error : "" };
+  }
+  msg.seen.token ??= { use: "cached", r: null, problem: "" };   // a replay of a trip that never got this far
+  const { use, r } = msg.seen.token;
+  if (r) await fetchToken(st, tw, "new 🎫?", r);
+  return use;
+}
+
+// ---------- The hourly token on the board ----------
+
+/** What the page knows about the cached hourly token, from main.js's "token" and "token-error" events. */
+const cached = { state: null, issuedAt: null, expiresAt: null, error: "" };   // state: null (nothing yet), "ok" or "error"
+
+/** True while the board knows of a valid cached token (its times may be unknown). */
+const tokenValid = () => cached.state === "ok" && (cached.expiresAt == null || cached.expiresAt > Date.now());
+
+/**
+ * True when the SDK should be renewing the cached token now: it renews half-way through the token's life plus 5 minutes,
+ * but at least 5 minutes before it expires. False when its times are unknown.
+ */
+const renewalDue = () => cached.issuedAt != null && cached.expiresAt != null &&
+  Math.min(cached.issuedAt + (cached.expiresAt - cached.issuedAt) / 2 + 300_000, cached.expiresAt - 300_000) <= Date.now();
+
+/** "mm:ss" (or "h:mm:ss") until `ms`. */
+function countdown(ms) {
+  const s = Math.max(0, Math.round((ms - Date.now()) / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return `${h ? h + ":" + String(m).padStart(2, "0") : m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** The 🎫 row on the board: a live countdown to the cached token's expiry, or why there's none. */
+function showCached() {
+  if (!scene || !cached.state) return;
+  if (cached.state === "error") { scene.tokens.set(0, `✕ none: ${tokenProblem(cached.error)}`, "bad"); return; }
+  if (cached.expiresAt == null) { scene.tokens.set(0, "✓ in this browser", "ok"); return; }
+  const at = new Date(cached.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (cached.expiresAt > Date.now()) scene.tokens.set(0, `✓ valid · expires in ${countdown(cached.expiresAt)} (at ${at})`, "ok");
+  else scene.tokens.set(0, LOCAL ? "renewed · reload to see it" : "expired · being renewed", "wait");   // locally renewals aren't announced
 }
 
 // ---------- Following the real events ----------
@@ -558,8 +665,17 @@ function start(text, ready) {
   run(current);
 }
 
-/** agent.js's stage events (createAgent's onEvent): the same ones the box diagram uses. Each one is also timed. */
+/**
+ * agent.js's stage events (createAgent's onEvent): the same ones the box diagram uses. Each one is also timed.
+ * main.js adds the cached App Check token's times ("token") and App Check's errors ("token-error") for the board.
+ */
 function event(e) {
+  if (e.type === "token") {
+    Object.assign(cached, { state: "ok", issuedAt: e.issuedAt ?? null, expiresAt: e.expiresAt ?? null, error: "" });
+    showCached();
+    return;
+  }
+  if (e.type === "token-error") { Object.assign(cached, { state: "error", error: e.message ?? "" }); showCached(); return; }
   if (!current) return;
   const now = performance.now(), marks = current.marks;
   if (e.type === "rejected" || e.type === "accepted") { marks.checked = now; current.seen.check = e; current.check.resolve(e); }
@@ -589,8 +705,12 @@ function measure() {
     model: modelRequests(marks.sent)[0] ?? null, now: performance.now(), local: LOCAL }));
 }
 
-/** Setup isn't finished (shown when the page loads). */
-function setupProblem(problem) { scene?.say(problem); }
+/** Setup isn't finished (shown when the page loads). There's no App Check then, so this also ends the page-load trip. */
+function setupProblem(problem) {
+  if (!scene) return;
+  scene.play.begin();
+  scene.say(problem);
+}
 
 /** Plays one message's trip, waiting for the real events where it needs them. */
 async function run(msg) {
@@ -635,60 +755,48 @@ async function run(msg) {
       } else {
         for (const [i, s] of [[0, "no"], [1, "no"], [2, "yes"]]) { rules.set(i, "check"); await tw.wait(350); rules.set(i, s); }
         await car.drive(tw, st.sOut(STOP.main));
-        leg(4, "main", "generate(text) calls model.generateContent(text). First the Firebase SDK needs a fresh single-use token (🎟️): " +
-          `the drone fetches one (${LOCAL ? "the debug token" : "reCAPTCHA"} vouches for this page, App Check swaps that for a token).`);
+        leg(4, "main");
         st.sending(true);
-        st.tokens.set(0, "fetching one for this message…", "wait");
-        let tok = await fetchToken(st, tw, msg.t0, "🎟️", "single-use 🎟️?", msg.replay ? (msg.seen.token ?? null) : undefined,
-          () => msg.seen.outcome);
-        // Without a reported status, a failed token request shows only as the App Check error, which may have come in since.
-        if (tok && !msg.replay) tok = { ...tok, verdict: tokenVerdict(tok.status, msg.seen.outcome) };
-        if (!msg.replay) msg.seen.token = tok;
-        if (!tok) {
-          // No token request seen, so wait for the result. An App Check error or a timeout with no request to Google means
-          // no token came (after a 403 the SDK holds off until the page is reloaded): nothing left your browser.
-          const out = await got("outcome");
-          if (!msg.replay) msg.seen.sent = modelRequests(msg.t0).length > 0;
-          if (out.type === "model-error" && (out.kind === "appcheck" || out.kind === "timeout") && !msg.seen.sent) {
-            tok = { held: out.kind, code: appCheckCode(out) };
-          }
-        }
-        if (tok?.held || (tok && tok.verdict !== "ok")) {
-          // No valid token: the SDK throws before sending anything (or main.js stops waiting for one), so the message never
-          // leaves your browser.
+        const use = await messageToken(st, tw, msg, got);
+        const { r: tok, problem } = msg.seen.token;
+        if (use === "late") {
+          // No valid token, and none within main.js's time limit: generate() stopped waiting, so nothing left your browser.
           skipped = [5, 6, 7, 8];
           st.sending(false);
-          car.carry(`${typed} 🎟️✕`, "err");
-          const late = tok.held === "timeout";
-          st.drone.carry(late ? "✕ none in time" : tok.held ? "✕ no token" : tokenError(tok), "err");
-          st.tokens.set(0, late ? "✕ none in time: message not sent" : tok.held ? "✕ none: message not sent"
-            : tok.verdict === "failed" ? "✕ request failed: message not sent"
-            : `✕ refused${tok.status ? ` (${tok.status})` : ""}: message not sent`, "bad");
-          if (!tok.held) showProof(st, tok);
+          car.carry(`${typed} 🎫✕`, "err");
+          st.drone.carry("✕ none in time", "err");
           reply = await got("reply");
-          const why = tok.code === "recaptcha-error" ? "reCAPTCHA couldn't vouch for this page, so the SDK didn't ask for one. "
-            : tok.code === "throttled" ? "the SDK didn't even ask, because after a refusal (403) it holds off until the page is reloaded. "
-            : tok.held ? "App Check gave the SDK none. "
-            : tok.verdict === "failed" ? "the token request never got through to App Check (offline, or blocked on the way, e.g. by a proxy). "
-            : `App Check refused the token request${tok.status ? ` (${tok.status})` : ""}` +
-              `${tok.debug ? ": this browser's debug token isn't registered" : ""}. `;
-          leg(4, "main", late
-            ? "No App Check token came back within main.js's time limit, so generate() stopped waiting. The message is never " +
-              "sent to Google: check the network log."
-            : "No valid App Check token: " + why + "So the Firebase SDK stops here and throws an App Check error. The message " +
-              "is never sent to Google: check the network log.");
+          leg(4, "main", "No valid App Check token came back within main.js's time limit, so generate() stopped waiting. The " +
+            "message is never sent to Google: check the network log.");
           st.bad("main");
           kind = "err"; turnAt = STOP.main;
         } else {
-          leg(4, "main", "Got a single-use token (🎟️). It's attached to the request (the X-Firebase-AppCheck header) and the request leaves.");
-          st.tokens.set(0, "✓ issued · riding with your message", "used");
-          st.drone.carry("");                          // handed over: the token rides with your message now
-          car.carry(`${typed} 🎟️`, "you"); await tw.wait(1200);
+          const ride = `${typed} ${use === "placeholder" ? "🎫✕" : "🎫"}`;   // what rides in the X-Firebase-AppCheck header
+          if (use === "placeholder") {
+            const why = !tok ? (/throttl/.test(problem)
+                ? "App Check refused a token request earlier, and after a refusal the SDK asks for no new one until the page is reloaded"
+                : `App Check gave none (${tokenProblem(problem)})`)
+              : tok.verdict === "failed" ? "the token request never got through (offline, or blocked on the way)"
+              : `App Check refused the token request (${tok.status || "refused"})` +
+                `${tok.debug ? ": this browser's debug token isn't registered" : ""}`;
+            st.drone.carry(tok ? tokenError(tok) : "✕ no token", "err");
+            leg(4, "main", `generate(text) calls model.generateContent(text), but there's no valid App Check token: ${why}. ` +
+              "The Firebase SDK sends the request anyway, with a placeholder in the X-Firebase-AppCheck header, so App " +
+              "Check's gate will refuse it.");
+          } else {
+            st.drone.carry("");
+            leg(4, "main", use === "new"
+              ? "Got a new hourly token (🎫). The SDK keeps it for the next messages and attaches it to this request (the " +
+                "X-Firebase-AppCheck header). The request leaves."
+              : "generate(text) calls model.generateContent(text). The Firebase SDK attaches the hourly token (🎫) already in " +
+                "this browser (the X-Firebase-AppCheck header): no token request, so the request leaves straight away.");
+          }
+          car.carry(ride, use === "placeholder" ? "err" : "you"); await tw.wait(1200);
           await car.drive(tw, st.sOut(STOP.bridge));
           leg(5, "bridge", "🔒 Encrypt: before the request leaves your computer, your browser's TLS encrypts it with the session key " +
             "it agreed with Google (usually AES-128-GCM). On the internet it's only scrambled bytes.");
           st.tls.upTo(1);
-          await crypt(st, tw, "near", "enc", `${typed} 🎟️`);
+          await crypt(st, tw, "near", "enc", ride);
           const early = msg.replay ? msg.seen.outcome : current === msg ? msg.seen.outcome : null;
           if (early?.kind === "network") {
             reply = await got("reply");
@@ -700,20 +808,23 @@ async function run(msg) {
             leg(5, "bridge", "🔓 Decrypt: HTTPS ends at Google's front door, which holds the same session key. It turns the bytes " +
               "back into your request, App Check token and all.");
             st.tls.upTo(3);
-            await crypt(st, tw, "far", "dec", `${typed} 🎟️`);
+            await crypt(st, tw, "far", "dec", ride);
             await car.drive(tw, st.sOut(STOP.appcheck)); st.sending(false);
-            leg(6, "appcheck", "App Check checks the single-use 🎟️ and marks it spent, so a copy can't be replayed…");
+            leg(6, "appcheck", use === "placeholder" ? "App Check checks the token: it's only a placeholder…"
+              : "App Check checks the 🎫: issued by App Check for this web app, and not expired?…");
             await tw.wait(700);
             const out = await got("outcome");
             if (out.type === "model-error" && (out.kind === "appcheck" || out.kind === "network")) {
               reply = await got("reply");
-              leg(6, "appcheck", out.kind === "appcheck"
-                ? "App Check refused the token (403), so the request goes no further. Copies of this page on other sites stop here too."
-                : "The request never reached Google (network error).");
+              leg(6, "appcheck", out.kind === "network" ? "The request never reached Google (network error)."
+                : use === "placeholder" ? "App Check refused the placeholder (403), so the request goes no further. Copies of " +
+                  "this page on other sites stop here too: they never get a real token."
+                : "App Check refused the token (403), although your browser had a valid one. The usual cause: replay protection " +
+                  "for Firebase AI Logic is Enforced in the Firebase console, so it accepts only single-use tokens (see \"If App " +
+                  "Check refuses (403)\" in the step 2 README).");
               st.bad("appcheck");
               kind = "err"; turnAt = STOP.appcheck;
             } else {
-              st.tokens.set(0, "✓ spent at App Check (can't be reused)", "ok");
               await boomTo(st.checkArm, 80);
               await car.drive(tw, st.sOut(STOP.ailogic));
               leg(7, "ailogic", "Firebase AI Logic accepts the token and adds the Gemini API key. The key stays here on Google's side: it never travels to your browser.");
@@ -723,8 +834,8 @@ async function run(msg) {
               st.busy(true); await tw.wait(1200);
               reply = await got("reply");
               if (out.type === "model-ok") {
-                leg(8, "gemini", `Gemini answered. Real time: generate() took ${fmt(out.ms)} in all, App Check token included ` +
-                  '("Where the time went" below splits it). The reply goes back the same way.');
+                leg(8, "gemini", `Gemini answered. Real time: generate() took ${fmt(out.ms)} in all ("Where the time went" ` +
+                  "below splits it). The reply goes back the same way.");
               } else {
                 kind = "err";
                 leg(8, "gemini", out.type === "model-empty" ? "Gemini sent an empty reply."
@@ -785,6 +896,11 @@ async function run(msg) {
   } catch (err) {
     if (err !== t.STOPPED) throw err;
   }
+}
+
+if (scene) {
+  setInterval(showCached, 1000);               // the 🎫 row's countdown
+  pageLoadToken();
 }
 
 export const street = { start, event, reply, setupProblem };

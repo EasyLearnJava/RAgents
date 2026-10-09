@@ -7,7 +7,8 @@ into a new step.
 ## The short answer
 
 - **No secret is in the repo or the browser.** The Gemini API key lives only on Google's side, inside Firebase AI Logic.
-- **Only this site can call the model.** App Check (reCAPTCHA Enterprise) rejects requests from other sites and scripts with `403`.
+- **Only this site can call the model.** App Check (reCAPTCHA Enterprise) rejects requests from other sites and scripts with `403`
+  (a token copied from our page works until it expires, about an hour: see risk 4).
 - **There's no bill to run up.** The project is on the free Spark plan with no billing account, so the worst case is
   "free quota used up" (`429`) until it resets.
 - **It isn't our server.** Gemini runs on Google's servers, so heavy traffic can't crash anything of ours.
@@ -17,7 +18,7 @@ into a new step.
 ```text
 Browser (public code)
   │  1. reCAPTCHA Enterprise scores the visitor (site key, only valid on our domains)
-  │  2. App Check turns that into a short-lived, single-use token
+  │  2. App Check turns that into an hourly token; the browser keeps it, renews it and sends it with every request
   ▼
 Firebase AI Logic (Google's servers)
   │  3. Rejects the request unless the App Check token is valid  ← enforced
@@ -61,10 +62,14 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
   register it in the Firebase console, and we never commit it.
 
 ### 4. Someone captures a token and replays it
-- **Risk:** a valid token reused many times.
-- **How we solved it:** `useLimitedUseAppCheckTokens: true` in `public/main.js`. Each AI Logic request uses a fresh
-  single-use token, so a captured token is worthless. We also keep no hourly (cached) token in the browser
-  (`isTokenAutoRefreshEnabled: false`). The trade-offs are in the README: "Hourly token or a fresh one each time?".
+- **Risk:** a valid token reused many times, for example from a script.
+- **How we handle it:** we accept this risk for speed. `public/main.js` uses App Check's hourly token
+  (`isTokenAutoRefreshEnabled: true`, `useLimitedUseAppCheckTokens: false`), so a token copied from the browser works
+  until it expires, about an hour. Only our pages can get a token in the first place (reCAPTCHA on our domains), and the
+  damage stops at "free quota used up" (6 and 8 below). For the strongest protection, switch to single-use tokens
+  (`useLimitedUseAppCheckTokens: true`) and set AI Logic's replay protection to Enforced. The trade-offs are in the
+  README: "Hourly token or a fresh one each time?".
+- **Where:** console checklist item D: with the hourly token, AI Logic's replay protection must be Unenforced.
 
 ### 5. The Firebase browser API key is "unrestricted"
 - **Risk:** the Cloud console warns that the project has an unrestricted API key. Unrestricted means it works from any
@@ -137,6 +142,7 @@ Gemini (Google's servers) ──► reply ──► shown in the chat as plain t
 | ✅ | **A.** Remove `localhost` from the reCAPTCHA key's domains | Google Cloud → Security → Fraud Defense → key `ragents-web` → Edit key → Domain list → 🗑 `localhost` → Save changes | Done |
 | ⬜ | **B.** Lower the per-user rate limit for AI Logic from 100 to 10 requests/minute | Google Cloud → IAM & Admin → Quotas & System Limits → Firebase AI Logic API → *Generate content requests per minute per project per user* (default) → ⋮ → Edit quota | To do |
 | ⬜ | **C.** Restrict the browser API key | Google Cloud → APIs & Services → Credentials → the browser key (auto-created by Firebase) | To do |
+| ⬜ | **D.** Set AI Logic's replay protection to **Unenforced (monitoring only)**, so it accepts the hourly token (Enforced refuses it with `403`) | Firebase → Security → App Check → APIs → Firebase AI Logic | To check |
 
 For **C** (key "Browser key (auto created by Firebase)"):
 - **API restrictions are already set.** Firebase limited the key to 25 Firebase APIs, including Firebase AI Logic API,
@@ -155,6 +161,8 @@ for typos.
 
 - **Quota use-up by a real visitor.** Someone patient using the real site in a real browser can use up the free daily
   quota. Everyone then sees "quota used up" until it resets. No cost, no data exposure; at worst the demo is unavailable for a while.
+- **A copied token, replayed for up to an hour.** The hourly token can be copied from DevTools and sent from a script
+  until it expires (risk 4). Same worst case as above: the free quota runs out for a while.
 - **The model can be wrong or say odd things.** The system instruction keeps it on task, but it's a demo, not a moderated
   product. Replies are shown as plain text, so they can't run code.
 - **Google's free tier can change.** Models get retired and limits change. If replies stop, check the error message and

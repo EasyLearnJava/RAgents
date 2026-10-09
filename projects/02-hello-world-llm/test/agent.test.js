@@ -25,6 +25,7 @@ test("step 2: empty and too-long input never reach the model", async () => {
 test("step 2: model errors become friendly messages", async () => {
   const fail = (m) => createAgent(async () => { throw new Error(m); });
   assert.match(await fail("403 - PERMISSION_DENIED: To access this model, you must enforce Firebase App Check.")("Hi"), /App Check/);
+  assert.match(await fail("[403 ] Firebase App Check token is invalid.")("Hi"), /"If App Check refuses \(403\)" in the step 2 README/);
   assert.match(await fail("429 RESOURCE_EXHAUSTED")("Hi"), /quota/);
   assert.match(await fail("[500 ] This model is currently experiencing high demand.")("Hi"), /busy/);
   assert.match(await fail("Failed to fetch")("Hi"), /reach the model/);
