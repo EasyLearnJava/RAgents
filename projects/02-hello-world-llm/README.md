@@ -99,7 +99,10 @@ while, never a bill. The same token also works for Firestore if a later step add
 
 **Check it in DevTools** (F12 → Network): on a first visit the page makes one token request
 (`…:exchangeRecaptchaEnterpriseToken`, with reCAPTCHA's `reload` before it); after that, each message makes one request,
-`…:generateContent`, carrying the same token in its `X-Firebase-AppCheck` header.
+`…:generateContent`, carrying the same token in its `X-Firebase-AppCheck` header. The saved token is under F12 →
+Application → IndexedDB → `firebase-app-check-database` → `firebase-app-check-store`, key `<App ID>-ragents-web`: the
+web app's App ID, then `ragents-web`, the name `main.js` gives its Firebase app object (`APP_NAME`; without one Firebase
+calls it `[DEFAULT]`). A hard reload doesn't remove it: it only empties the HTTP cache, not the site's storage.
 
 ## If App Check refuses (403)
 

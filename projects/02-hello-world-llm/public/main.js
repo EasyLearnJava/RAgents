@@ -21,6 +21,14 @@ import { SYSTEM_INSTRUCTION, createAgent, setupProblem } from "./agent.js";
 const REPLY_TIMEOUT_MS = 90_000;
 
 /**
+ * The name of the Firebase app object this page creates (without one, Firebase calls it "[DEFAULT]"). It only exists in
+ * the browser; we reuse the web app's nickname from the Firebase console so it's easy to recognise. It's part of the keys
+ * the SDK saves in IndexedDB: "<App ID>-ragents-web" for the cached App Check token, "ragents-web!<App ID>" for the
+ * daily heartbeat.
+ */
+const APP_NAME = "ragents-web";
+
+/**
  * Finds the Firebase web config: FIREBASE_CONFIG from ai-config.js if set, otherwise
  * /__/firebase/init.json (served by Firebase Hosting; forwarded there on Vercel and by the local server).
  *
@@ -73,7 +81,7 @@ export async function startAgent(onEvent) {
   // The browser console prints it; register it once in the console (see README).
   if (["localhost", "127.0.0.1"].includes(location.hostname)) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
 
-  const app = initializeApp(config);
+  const app = initializeApp(config, APP_NAME);
   // App Check must start before the first model call. One hourly token: fetched when the page loads (unless one saved
   // in this browser is still fresh), cached in the browser and renewed in the background about 35 minutes into its hour.
   // See "Hourly token or a fresh one each time?" in the README.
