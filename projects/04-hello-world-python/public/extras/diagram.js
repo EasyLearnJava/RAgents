@@ -5,6 +5,7 @@
  * onSend → api() → fetch → chat() (main.py) → run_with_events() (agent.py) → chain, and back.
  * The server's LangChain events come back in the JSON reply, so the replay shows real server-side steps and times.
  * index.html calls showDiagram() on the line marked EXTRA; remove it and the chat works the same.
+ * It waits for the frame that draws the reply, so the street view's "Where the time went" doesn't count its drawing.
  */
 import { createFlow } from "/lib/flow.js";
 
@@ -38,18 +39,32 @@ const SPEC = {
   ],
 };
 
-// The diagram adds its own place under the chat, so index.html needs no diagram HTML.
+// The diagram adds its own place on the page (style.css gives it its own row, under the street view),
+// so index.html needs no diagram HTML.
 const box = document.createElement("div");
-box.style.width = "100%";
+box.className = "diagram";
 document.body.append(box);
 const flow = createFlow(box, SPEC);
 
 const short = (v) => (v && typeof v === "object" && "reply" in v ? `{reply: “${v.reply}”, rule: ${v.rule}}` : JSON.stringify(v));
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Resolves once the next frame has been drawn (the one that shows the reply). */
+const afterFrame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
 let run = 0;                      // a newer message cancels an older replay
+let active = null;                // the box that's pulsing ("active") right now, if any
+/** Lights one box: it pulses until it gets its result. */
+const light = (node, note) => { flow.set(node, "active", note); active = node; };
+// A new message stops the last replay right away, pulse included, so the diagram draws nothing while the message is
+// out (the street view's "Where the time went" would count it as the browser's time).
+document.getElementById("form")?.addEventListener("submit", () => {
+  run++;
+  if (active) flow.set(active, "idle");
+  active = null;
+});
 
 /**
  * Replays one round trip, naming each function: the calls on the way in, the server's events, then each return.
+ * It starts once the reply has been drawn, so its own work isn't timed as part of the message.
  * @param {string} text What the user typed.
  * @param {{ok: boolean, status: number, data: object}} res What api() returned.
  * @param {number} totalMs The full round trip, measured by index.html.
@@ -57,10 +72,12 @@ let run = 0;                      // a newer message cancels an older replay
  */
 export async function showDiagram(text, res, totalMs, shown) {
   const id = ++run;
+  await afterFrame();
+  if (id !== run) return;
   const typed = `“${text.trim().slice(0, 30)}”`;
   const step = async (node, state, note, line) => {
-    flow.set(node, "active"); await pause(220); if (id !== run) return false;
-    flow.set(node, state, note);
+    light(node); await pause(220); if (id !== run) return false;
+    flow.set(node, state, note); active = null;
     if (line) flow.log(line, state === "error" ? "error" : node === "r-you" ? "done" : undefined);
     return true;
   };
@@ -92,7 +109,7 @@ export async function showDiagram(text, res, totalMs, shown) {
   for (const e of events) {
     await pause(170); if (id !== run) return;
     if (e.event === "on_chain_start") {
-      if (e.name === "normalize" || e.name === "rules") flow.set("chain", "active", path.join(" · ") || e.name);
+      if (e.name === "normalize" || e.name === "rules") light("chain", path.join(" · ") || e.name);
       flow.log(`[server ${e.ms} ms] on_chain_start · ${e.name}`);
       continue;
     }
@@ -100,8 +117,8 @@ export async function showDiagram(text, res, totalMs, shown) {
     if (e.name === "normalize") path.push(`normalize → “${e.output}”`);
     if (e.name.endsWith("?")) path.push(`${e.name} ${e.output ? "yes" : "no"}`);
     if (e.name.startsWith("reply:")) path.push(e.name);
-    if (e.name === "rules") flow.set("chain", "done", path.join(" · "));
-    else if (e.name !== "hello-chain") flow.set("chain", "active", path.join(" · "));
+    if (e.name === "rules") { flow.set("chain", "done", path.join(" · ")); active = null; }
+    else if (e.name !== "hello-chain") light("chain", path.join(" · "));
   }
   const rule = events.find((e) => e.event === "on_chain_end" && e.name === "rules")?.output?.rule;
   if (!await step("r-chain", "done", `{ reply: ${said}, rule: "${rule}" }`, `rules returned { reply: ${said}, rule: "${rule}" }`)) return;

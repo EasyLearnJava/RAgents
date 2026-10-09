@@ -525,6 +525,64 @@ export function browserWindow(scene, tab, note) {
 /** Network requests this page has made since `since` (a performance.now() time), from the browser's Resource Timing. */
 export const requestsSince = (since) => performance.getEntriesByType("resource").filter((e) => e.startTime >= since);
 
+/**
+ * Under a scene's tracker: where the time really went for the last message (each step's extras/timing.js does the
+ * sums). Each stage is a slice of one bar and a row with its time and share, coloured by where it ran: blue is your
+ * browser, orange is the other end of the internet ("google" or "server"), striped is both, where the page can't split
+ * them. While you wait, the stage you're waiting on counts up. A slice's width is its share of the time, however short
+ * the stages are (CSS gives even the tiniest slice a few pixels, so you can see it's there).
+ * It's redrawn several times a second, so it updates its rows in place: rebuilding them would restart the waiting pulse,
+ * stop the bar from growing smoothly and clear any text you select.
+ *
+ * @param {object} o
+ * @param {Record<string, string>} o.where What each kind of stage is called, e.g. { browser: "your browser" }.
+ * @param {(ms: number) => string} o.fmt How a duration is shown.
+ * @param {string} o.hint The note before the first message.
+ * @param {string} o.measured The note when the stages bring none of their own.
+ * @returns {{el: HTMLElement, show: (r: {rows: object[], total: number, live: boolean, note?: string}) => void}}
+ */
+export function timingPanel({ where, fmt, hint, measured }) {
+  const box = el("div", "st-timing");
+  const bar = el("div", "st-tbar"), list = el("ol", "st-tlist");
+  const note = el("p", "st-note", hint);
+  box.append(el("p", "st-label", "⏱ Where the time went: real times for your last message (the street view is slowed down)"), bar, list, note);
+  /** Gives `parent` exactly n children (new ones from make()) and returns them. */
+  const keep = (parent, n, make) => {
+    while (parent.children.length > n) parent.lastElementChild.remove();
+    while (parent.children.length < n) parent.append(make());
+    return [...parent.children];
+  };
+  /** Sets text or a class only when it changed (rewriting the same text would still clear a selection in it). */
+  const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const cls = (node, name) => { if (node.className !== name) node.className = name; };
+  const blank = () => { const li = el("li"); li.append(el("i"), el("span", "nm"), el("small", "wh"), el("b"), el("small", "pc")); return li; };
+  return {
+    el: box,
+    /** Draws what a step's stages() returns: { rows: [{ name, where, ms, live }], total, live, note }. */
+    show({ rows, total, live, note: text }) {
+      const share = (ms) => (total > 0 ? `${Math.round((100 * ms) / total)}%` : "");
+      const kind = (r) => `${r.where}${r.live ? " live" : ""}`;
+      // Each slice grows by its share of the bar (in thousandths), not its raw time: when the grow values add up to less
+      // than 1 (stages that are all under a millisecond, as in step 1), CSS fills only that part of the bar.
+      const sum = rows.reduce((a, r) => a + (r.ms > 0 ? r.ms : 0), 0);
+      const grow = (ms) => (sum > 0 ? (1000 * (ms > 0 ? ms : 0)) / sum : 1);
+      keep(bar, rows.length, () => el("span")).forEach((slice, i) => {
+        cls(slice, kind(rows[i]));
+        slice.style.flexGrow = String(grow(rows[i].ms));      // the same node each time, so it grows smoothly
+        slice.title = `${rows[i].name}: ${fmt(rows[i].ms)}`;
+      });
+      const items = [...rows.map((r) => [kind(r), r.name, where[r.where] ?? "", fmt(r.ms) + (r.live ? "…" : ""), share(r.ms)]),
+        ["total", live ? "So far" : "Total: from Send to the reply on the page", "", fmt(total) + (live ? "…" : ""), ""]];
+      keep(list, items.length, blank).forEach((li, i) => {
+        const [name, ...texts] = items[i];
+        cls(li, name);
+        texts.forEach((s, j) => put(li.children[j + 1], s));
+      });
+      put(note, text || measured);
+    },
+  };
+}
+
 // ---------- Animation ----------
 
 /** Thrown to end an older replay when a newer one starts. */
@@ -713,7 +771,8 @@ ${Object.entries(MATERIALS).map(([m, [t, l, r]]) => `.st-${m} .t { fill: var(${t
 .st-timing .st-label { margin: 0 0 6px; font-weight: 900; }
 .st-tbar { display: flex; height: 22px; border: 2px solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--bg); }
 .st-tbar span { min-width: 3px; transition: flex-grow .25s; } .st-tbar span + span { border-left: 1.5px solid var(--card); }
-.st-tbar .browser, .st-tlist .browser i { background: var(--you); } .st-tbar .google, .st-tlist .google i { background: var(--bot); }
+.st-tbar .browser, .st-tlist .browser i { background: var(--you); }
+.st-tbar .google, .st-tlist .google i, .st-tbar .server, .st-tlist .server i { background: var(--bot); }
 .st-tbar .both, .st-tlist .both i { background: repeating-linear-gradient(135deg, var(--you) 0 4px, var(--bot) 4px 8px); }
 .st-tbar .live, .st-tlist .live i { animation: st-wait .9s ease-in-out infinite alternate; }
 @keyframes st-wait { to { opacity: .45; } }

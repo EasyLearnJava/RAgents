@@ -23,10 +23,108 @@
       <button id="send" type="submit" disabled>Send</button>
     </form>
   </main>
+  <!-- EXTRA: the "About this step" panel next to the chat (not part of the agent; delete it and the chat works the same). -->
+  <aside class="about" aria-label="About this step">
+    <details open>
+      <summary>What you learn</summary>
+      <ul>
+        <li><b>Runnables:</b> LangChain's building block. agent.js turns plain functions into Runnables with
+          <code>RunnableLambda.from(fn)</code> and names each one, so it shows up by name in LangChain's reports.</li>
+        <li><b><code>.pipe()</code>:</b> joins Runnables into a chain. <code>normalize.pipe(rules)</code> feeds normalize's
+          output into rules, and <code>chain.invoke(text)</code> runs the whole chain and returns <code>{ reply, rule }</code>.</li>
+        <li><b>RunnableBranch:</b> if/else as a chain step. It tries each condition in order (is empty? → is greeting?) and
+          runs the reply step of the first one that's true, or the default.</li>
+        <li><b><code>streamEvents()</code>:</b> LangChain reports each step as it runs (<code>on_chain_start</code>,
+          <code>on_chain_end</code>, with names and outputs). The street view and the diagram below are drawn from that report.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>How a message travels</summary>
+      <ol>
+        <li><b>index.html:</b> the form's "submit" event runs <code>onSend(e)</code>, which adds your bubble and calls
+          <code>chain.invoke(text)</code>.</li>
+        <li><b>normalize</b> (a RunnableLambda in agent.js) trims the text. <code>.pipe()</code> hands the result to rules.</li>
+        <li><b>rules</b> (a RunnableBranch) asks: is it empty? Is it a greeting (hello, hi or hey as the first word)? If
+          neither, it takes the default. The reply step it picks returns <code>{ reply, rule }</code>.</li>
+        <li><b>onSend(e)</b> gets that object back and shows <code>result.reply</code> with <code>add()</code>.</li>
+        <li><b>For the street view and the diagram only:</b> once the reply is on screen, the page runs the chain a second
+          time with <code>streamEvents()</code> and records what LangChain reports. Both replay that recording slowly.</li>
+      </ol>
+      <p>The real trip takes milliseconds. "Where the time went", under the street view's tracker, shows each stage.</p>
+    </details>
+    <details>
+      <summary>What leaves your browser</summary>
+      <ul>
+        <li><b>Your messages: nothing.</b> There's no model and no server call: the chain runs in this tab. The street view
+          counts the page's network requests from your first message on, and it stays at 0.</li>
+        <li><b>LangChain's code comes in, once.</b> When the page loads, the import map points
+          <code>@langchain/core/runnables</code> at jsDelivr, a public CDN. That one import brings in about a dozen files:
+          LangChain's runnables plus the packages they use (langsmith, zod and a few small helpers). The street view lists
+          the real requests. Send stays off until they've all arrived.</li>
+        <li><b>The page's own files</b> (index.html, agent.js, style.css, the extras) come from this site's server, also once.</li>
+        <li><b>LangSmith tracing is off.</b> LangSmith is LangChain's hosted tracing service. Its client code is among the
+          downloaded files, but LangChain only sends traces when tracing is switched on (a setting such as
+          <code>LANGSMITH_TRACING=true</code>, which a web page doesn't have), and nothing on this page switches it on.
+          The to-do card below lists what real tracing would need.</li>
+        <li><b>What jsDelivr sees:</b> each file request, with your IP address and this site's address, like any download.
+          Never what you type.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Why LangChain, for three rules?</summary>
+      <ul>
+        <li><b>Same replies as step 1</b> (the tests compare them, message by message), so only the shape changes.</li>
+        <li><b>One interface for every piece:</b> a function, a prompt, a model and a tool are all Runnables. A later step
+          can swap <code>reply: fallback</code> for a model and keep the rest of the chain.</li>
+        <li><b>A report for free:</b> <code>streamEvents()</code> describes each step with no extra code in agent.js. It's
+          built on the same tracer callbacks that send LangSmith traces when tracing is on.</li>
+        <li><b>The cost:</b> about 0.3 MB to download (about 1.2 MB of JavaScript once unpacked) to do what step 1 does in a
+          few lines, plus a CDN the page depends on. It pays off as the chain grows; for Hello World alone it's overkill.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Limits</summary>
+      <ul>
+        <li>It still only knows greetings: step 1's rules, no model, no memory between messages.</li>
+        <li>It needs jsDelivr when the page loads. If the CDN is blocked or offline, the chat says it couldn't load
+          LangChain and Send stays off. Once the page has loaded, it works offline.</li>
+        <li>The first visit waits for LangChain's files before Send turns on; later visits usually get them from the
+          browser's cache.</li>
+        <li>The street view and the diagram show the second, recorded run. It gives the same reply (same rules, same text),
+          but it's usually slower than the real call, because LangChain reports every step.</li>
+        <li>Times are only as exact as the browser's clock, which moves in small steps on purpose (0.1 ms in Chrome and
+          Edge), so times under a millisecond are approximate.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Safety, and what's still possible</summary>
+      <ul>
+        <li><b>No keys, no secrets, no backend:</b> nothing on this page unlocks anything, and there's no quota or bill to
+          run up. The chain runs on your own computer.</li>
+        <li><b>No script injection:</b> your text and the replies go on the page with <code>textContent</code>, so HTML in a
+          message is shown as plain text.</li>
+        <li><b>A pinned version:</b> the import map asks for <code>@langchain/core@1.2.17</code>, the version
+          <code>package.json</code> pins for the tests, so a new <code>@langchain/core</code> release can't slip in. Only
+          that one package is pinned here: the next point covers the ones it imports.</li>
+        <li><b>Still possible: nothing checks the downloaded code.</b> The import map has no integrity hashes, and jsDelivr
+          generates these <code>+esm</code> files itself (each one starts with its own note: "Do NOT use SRI with dynamically
+          generated files!"). The versions of the packages <code>@langchain/core</code> imports (LangChain's own langsmith,
+          zod and a few helpers) are written into jsDelivr's file, not chosen by this repo: today they match the tests'
+          <code>node_modules</code>, but if jsDelivr ever rebuilt the file, newer ones could come in. So the page trusts
+          jsDelivr and npm: altered code would run here with full access to the page, including what you type.</li>
+        <li><b>Also possible:</b> a company proxy that inspects HTTPS (e.g. Zscaler) sees, and could change, the files this
+          page downloads. It never sees your messages: none are sent.</li>
+        <li><b>To close the gap (not done yet):</b> serve LangChain from this site, bundled at build time from the tested
+          <code>node_modules</code>, with integrity hashes, plus a Content Security Policy that only allows this site's scripts.</li>
+      </ul>
+    </details>
+  </aside>
 
 <script type="module">
   // Page wiring for step 3: load the chain, then run each message through it.
   import { showDiagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
+  import { street } from "./extras/street.js";         // EXTRA: the same trip as a street scene with a car, and its timings
+  import { record } from "./extras/record.js";         // EXTRA: LangChain's events for each message, for both
   import "./extras/langsmith-todo.js";                 // EXTRA: the LangSmith to-do card
 
   const log = document.getElementById("log");        // the scrolling message list
@@ -57,14 +155,20 @@
   /** Runs when you press Send or Enter (the form's "submit" event). */
   async function onSend(e) {
     e.preventDefault();                // stay on the page instead of submitting the form
+    street.start(e);                           // EXTRA: notes when the submit event fired and when onSend(e) started
     if (!chain) return;
     const text = input.value;
     if (text.trim()) add(text, "you");
     input.value = "";
+    street.mark(e, "invoke");                  // EXTRA: the real chain.invoke() starts…
     const result = await chain.invoke(text);   // ← the call into agent.js's chain: returns { reply, rule }
+    street.mark(e, "resolved");                // EXTRA: …and has returned
     add(result.reply, "bot");                  // ← the reply goes back onto the page
     input.focus();
-    showDiagram(text, chain);                  // EXTRA: replay this message in the diagram
+    street.mark(e, "added");                   // EXTRA: onSend(e) is done; the next frame draws the reply
+    const events = record(chain, text);        // EXTRA: LangChain's events for this message, recorded once, after that frame
+    showDiagram(text, events);                 // EXTRA: replay this message in the diagram
+    street.reply(e, text, result, events);     // EXTRA: and as a car trip in the street view
   }
   document.getElementById("form").addEventListener("submit", onSend);
 </script>

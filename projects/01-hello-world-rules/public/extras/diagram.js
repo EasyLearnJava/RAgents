@@ -33,7 +33,8 @@ export const PATH = {
 const SPEC = {
   title: "What happens when you press Send",
   hint: "Each box names the function that runs. Everything happens inside your browser (no server, no model), " +
-        "slowed down so you can follow it.",
+        "slowed down so you can follow it: the times in the list are the replay's, and the real ones are in the " +
+        "street view's \"Where the time went\".",
   lanes: [
     { label: "You", nodes: [{ id: "you", title: "You", sub: "type a message, press Send (or Enter)" }] },
     { label: "index.html", nodes: [
@@ -83,12 +84,17 @@ export async function showDiagram(text, reply) {
   const flow = await ensureFlow();
   const id = ++run;
   const rule = ruleFromReply(reply);
-  const typed = `“${text.trim().slice(0, 30)}”`;
+  const typed = `“${(text.trim() || text).slice(0, 30)}”`;    // a blank message is quoted as it is: “” or “   ”
   const said = `“${reply.slice(0, 40)}”`;
+  // respond() gives the hint only for a blank message: nothing typed, or only spaces (text.trim() leaves nothing).
+  const blank = rule === "empty" ? (text ? "only spaces" : "nothing") : "";
   const steps = [
-    ["you", typed, `You typed ${typed} and pressed Send`],
+    ["you", typed, blank ? `You pressed Send with ${blank} typed` : `You typed ${typed} and pressed Send`],
     ["submit", "submit event", 'The browser fired "submit" on <form id="form"> → onSend(e) started'],
-    ["onsend", `respond(${typed})`, `onSend(e) read input.value, added your bubble with add(text, "you"), then called respond(${typed}) in agent.js`],
+    ["onsend", `respond(${typed})`, blank
+      ? `onSend(e) read input.value: ${blank} typed, so text.trim() was empty and there was no bubble of yours. ` +
+        `Then it called respond(${typed}) in agent.js`
+      : `onSend(e) read input.value, added your bubble with add(text, "you"), then called respond(${typed}) in agent.js`],
     ["respond", PATH[rule], `respond(): ${PATH[rule]}`],
     ["r-respond", said, `respond() returned ${said} to onSend(e)`],
     ["r-onsend", `add(${said}, "bot")`, 'onSend(e) got the reply and called add(reply, "bot")'],

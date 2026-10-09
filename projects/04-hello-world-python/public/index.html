@@ -19,9 +19,122 @@
       <button id="send" type="submit">Send</button>
     </form>
   </main>
+  <!-- EXTRA: the "About this step" panel next to the chat (not part of the agent; delete it and the chat works the same). -->
+  <aside class="about" aria-label="About this step">
+    <details open>
+      <summary>What you learn</summary>
+      <ul>
+        <li>Splitting an app into a <b>frontend</b> (this page, in your browser) and a <b>backend</b> (Python on a server)
+          that talk over HTTP, with JSON going both ways</li>
+        <li><b>FastAPI</b>: each endpoint is a Python function (<code>chat()</code>, <code>health()</code>), and FastAPI turns
+          the JSON body into a Python object and the result back into JSON</li>
+        <li><b>Validation on the server</b>: <code>ChatIn</code> allows at most 1000 characters, and FastAPI refuses anything
+          longer (422) before your code runs</li>
+        <li>The same chain as step 3, in <b>Python's LangChain</b>: <code>normalize | rules</code></li>
+        <li><b>Local and live</b>: the same code runs under uvicorn on your computer and as a Vercel Python function on the live site</li>
+      </ul>
+    </details>
+    <details>
+      <summary>How a message travels</summary>
+      <ol>
+        <li><b>index.html</b>: <code>onSend(e)</code> adds your bubble and "thinking…", then <code>api()</code> sends it with
+          <code>fetch</code>: <code>POST /api/step4/chat</code>, the body <code>{"message": …}</code> as JSON. The page doesn't
+          check the text: even an empty message goes to the server, and the chain answers it.</li>
+        <li><b>Vercel</b> (live): HTTPS ends at Vercel's front door, and <code>vercel.json</code> sends every <code>/api/*</code>
+          request to the Python function <code>api/index.py</code>, which loads <code>main.py</code>'s FastAPI app. Locally,
+          the site server forwards <code>/api/*</code> to uvicorn instead.</li>
+        <li><b>main.py</b>: FastAPI reads the JSON into <code>ChatIn</code>. More than 1000 characters is refused here (422);
+          otherwise it calls <code>chat(body)</code>, which calls <code>run_with_events(message)</code>.</li>
+        <li><b>agent.py</b>: <code>run_with_events()</code> runs the chain with <code>astream_events()</code>, keeps each named
+          step's events and times the whole run (<code>server_ms</code>).</li>
+        <li><b>Back</b>: <code>chat()</code> returns <code>{ reply, rule, events, server_ms }</code>, FastAPI sends it as JSON,
+          <code>api()</code> parses it and <code>add()</code> shows the reply. The street view lights the chain's board from
+          those events, so it shows what really ran on the server.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Errors and limits</summary>
+      <ul>
+        <li><b>422, too long:</b> more than 1000 characters. The box takes 1100 on purpose, so you can try it: FastAPI
+          refuses it before <code>chat()</code> runs, and the chain never sees it.</li>
+        <li><b>502, backend not running:</b> locally, the site server couldn't reach uvicorn on <code>127.0.0.1:8000</code>.
+          Start it (see the README) and reload the page.</li>
+        <li><b>404, not deployed:</b> a site with no Python backend behind <code>/api/*</code> answers 404 or a web page
+          instead of JSON, e.g. the Firebase Hosting copy (<code>ragent-eec65.web.app</code>).</li>
+        <li><b>Network error:</b> no answer at all (offline, or the server can't be reached). <code>api()</code> never
+          throws: it returns <code>{ ok: false, status: 0 }</code> and the chat says so.</li>
+        <li><b>Cold starts:</b> Vercel starts a copy of the function when a request needs one and stops it after it's been
+          idle. A message that finds none waits for Python to start and load FastAPI and LangChain, which can add a second
+          or more. "Where the time went" shows it in the "there and back" stage.</li>
+        <li><b>Time limits:</b> Vercel stops the function after 10 seconds (<code>maxDuration</code> in
+          <code>vercel.json</code>). The page has no limit of its own: it waits for <code>fetch</code>, with "thinking…"
+          showing and Send turned off.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Safety</summary>
+      <ul>
+        <li><b>Checked on the server:</b> the 1000-character limit is in <code>main.py</code> (<code>ChatIn</code>), because
+          anyone can call <code>/api/step4/chat</code> without this page (e.g. with curl) and skip any check in the browser.
+          The box's 1100 is only a convenience.</li>
+        <li><b>No keys yet:</b> this step has no model, so there's nothing secret in the page, the repo or the server: it
+          only runs the rules.</li>
+        <li><b>Same origin, so no CORS:</b> the page and <code>/api</code> share one address, so the browser allows the call
+          without CORS headers. <code>main.py</code> adds none, so a page on another site can't read its answers in a
+          visitor's browser.</li>
+        <li><b>No script injection:</b> replies and error messages go on the page with <code>textContent</code>, so text that
+          looks like HTML is just text.</li>
+        <li><b>The endpoint is public:</b> scripts can call it directly. That's fine for rules that cost no money, though a
+          flood could still use up the free request quota (see the README's safety notes). Step 5 adds
+          App Check on the server before Gemini moves there, because then every call costs quota.</li>
+        <li><b>Limits:</b> Vercel stops a call after 10 seconds. Locally everything binds to <code>127.0.0.1</code>, so
+          nothing else on your network can reach it.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Where it runs</summary>
+      <table>
+        <tr><th>Where</th><th>The page</th><th>The Python backend</th></tr>
+        <tr><td>Live: <code>ragents-eight.vercel.app</code></td><td>Vercel, over HTTPS</td><td>A Vercel Python function:
+          <code>api/index.py</code> loads <code>main.py</code>. Vercel starts it when needed and installs the packages in the
+          root <code>requirements.txt</code></td></tr>
+        <tr><td>Your computer</td><td><code>npm run serve</code> on <code>127.0.0.1:5000</code></td><td>uvicorn, which you start
+          on <code>127.0.0.1:8000</code>; the site server forwards <code>/api/*</code> to it</td></tr>
+        <tr><td>Alternative (README)</td><td>Firebase Hosting</td><td>Cloud Run, built from <code>backend/Dockerfile</code>.
+          It needs the Blaze plan (billing), so it isn't set up: on <code>ragent-eec65.web.app</code> step 4 says it isn't
+          deployed</td></tr>
+      </table>
+      <p>The same <code>main.py</code> and <code>agent.py</code> run in all three; only how they're started changes.</p>
+    </details>
+    <details>
+      <summary>Is my message private? <span class="tag">To Review</span></summary>
+      <p><b>Short answer:</b> live, it's encrypted on the way, so strangers on the network can't read it. The server reads
+        it, because it has to answer it.</p>
+      <ul>
+        <li><b>HTTPS for the whole trip (live):</b> the page and <code>/api/step4/chat</code> are on the same Vercel site, over
+          HTTPS. <code>.app</code> domains are HTTPS-only (on the browsers' HSTS preload list), so it can't be downgraded to
+          plain HTTP.</li>
+        <li><b>What an eavesdropper sees</b> (same Wi-Fi, internet provider): which site you talk to, roughly how big each
+          message is and when. Not the text.</li>
+        <li><b>Vercel sees it:</b> HTTPS ends at Vercel's front door, so Vercel's servers handle the request in plain form and
+          pass it to the Python function, which reads it to run the rules. Vercel, as the host, keeps request logs of its
+          own; the app adds nothing of yours to them.</li>
+        <li><b>The code keeps nothing:</b> <code>main.py</code> and <code>agent.py</code> don't log, print or store your
+          message. It goes back to your browser in two places only: the reply's events (normalize's output is your trimmed
+          text) and FastAPI's 422, which repeats your whole text (its <code>input</code>).</li>
+        <li><b>Locally:</b> plain HTTP on <code>127.0.0.1</code>, which never leaves your computer. uvicorn prints one line
+          per request in its terminal: the client address, the method, the path and the status, not your text.</li>
+        <li><b>A company network that inspects HTTPS</b> (e.g. Zscaler) decrypts and re-encrypts traffic, so its proxy can
+          read your messages.</li>
+      </ul>
+      <p><b>Check it yourself:</b> F12 → <b>Network</b>, send a message and click <code>chat</code>: <b>Payload</b> shows
+        what was sent and <b>Response</b> the JSON that came back. Only your browser shows them in readable form.</p>
+    </details>
+  </aside>
 <script type="module">
   // Page wiring for step 4: send each message to the Python backend (/api/step4/chat) and show the reply.
   import { showDiagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
+  import { street } from "./extras/street.js";         // EXTRA: the same trip as a street scene with a car
 
   const log = document.getElementById("log");        // the scrolling message list
   const input = document.getElementById("msg");      // the text box
@@ -61,6 +174,7 @@
 
   // On load: is the backend there? Show its versions, or why it isn't.
   const health = await api("/api/step4/health");
+  street.health(health);               // EXTRA: the street view replays the health check on the server's land
   if (health.ok) {
     status.textContent = `Python ${health.data.python} · langchain-core ${health.data.langchain_core}`;
     status.className = "ok";
@@ -72,20 +186,24 @@
   /** Runs when you press Send or Enter (the form's "submit" event). */
   async function onSend(e) {
     e.preventDefault();                // stay on the page instead of submitting the form
+    street.start(e.timeStamp);         // EXTRA: "Where the time went" starts at the submit event
     const text = input.value;
     if (text.trim()) add(text, "you");
     input.value = "";
     send.disabled = true;
     const thinking = add("thinking…", "bot", "thinking");
     const t0 = performance.now();
+    street.send(text);                 // EXTRA: marks the moment just before fetch
     const res = await api("/api/step4/chat", { message: text });   // ← the call to the Python server
+    street.answer(res);                // EXTRA: what came back, and when
     const totalMs = performance.now() - t0;
     thinking.remove();
     const shown = res.ok ? res.data.reply : whyFailed(res);
     add(shown, "bot");                                             // ← the reply goes back onto the page
+    street.reply(shown);               // EXTRA: it's on the page: the street view times the next frame, then plays the trip
     send.disabled = false;
     input.focus();
-    showDiagram(text, res, totalMs, shown);                        // EXTRA: replay the round trip in the diagram
+    showDiagram(text, res, totalMs, shown);                        // EXTRA: replay the round trip in the diagram (after that frame)
   }
   document.getElementById("form").addEventListener("submit", onSend);
 </script>

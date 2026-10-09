@@ -4,13 +4,22 @@
   :root { --bg:#1a1511; --card:#28201a; --ink:#f4e9d6; --muted:#cdbb9e; --you:#4b75b8; --bot:#c4653c; }
 }
 * { box-sizing: border-box; }
-/* One row each: the chat, then the street view, then the box diagram. */
+/* The chat and the "About this step" panel sit side by side (the panel wraps under the chat when there isn't
+   room); the street view and then the box diagram each get their own full-width row below. */
 body { margin: 0; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: center; gap: 24px; padding: 24px 16px;
        background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
-.chat { flex: 0 1 420px; min-width: 0; background: var(--card); border: 3px solid var(--ink);
-        border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); overflow: hidden; }
+.chat, .about { background: var(--card); border: 3px solid var(--ink); border-radius: 22px; box-shadow: 6px 6px 0 var(--ink); }
+.chat { flex: 0 1 420px; min-width: 0; overflow: hidden; }
 .street { flex: 1 1 100%; min-width: 0; order: 1; }
 .diagram { flex: 1 1 100%; min-width: 0; order: 2; }
+.about { flex: 1 1 380px; min-width: 0; max-width: 740px; padding: 6px 18px; font-size: .9rem; }
+.about details { border-bottom: 2px dashed var(--muted); padding: 8px 0; }
+.about details:last-child { border-bottom: 0; }
+.about summary { font-weight: 800; font-size: 1rem; cursor: pointer; }
+.about ul, .about ol { margin: 6px 0 2px; padding-left: 1.3em; }
+.about li { margin: 3px 0; }
+.about p { margin: 6px 0 2px; }
+.about code { font-size: .85em; background: var(--bg); border: 1px solid var(--muted); border-radius: 5px; padding: 0 4px; overflow-wrap: anywhere; }
 header { padding: 14px 18px; border-bottom: 3px solid var(--ink); font-weight: 800; font-size: 1.1rem; }
 header small { display: block; font-weight: 500; font-size: .85rem; color: var(--muted); }
 #log { height: 340px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }

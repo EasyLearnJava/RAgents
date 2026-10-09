@@ -7,7 +7,7 @@
     "Splitting an app into a frontend (the page) and a backend (Python on a server) that talk over HTTP",
     "LangChain in Python: RunnableLambda, RunnableBranch and `a | b` (Python's .pipe)",
     "FastAPI basics: an endpoint, input validation (≤ 1000 characters), JSON in and out",
-    "Running it locally on 127.0.0.1, and how it reaches Cloud Run on the live site"
+    "Running it locally on 127.0.0.1, and live on Vercel as a Python function"
   ],
   "next": "Step 5 swaps the rules for Gemini, called from Python with the key kept on the server (Secret Manager)."
 }

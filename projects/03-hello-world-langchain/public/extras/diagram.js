@@ -1,9 +1,9 @@
 /**
  * EXTRA: a teaching aid, not part of the agent.
  *
- * Draws the "What happens when you press Send" diagram under the chat. To show LangChain's real steps it runs
- * the chain once more with chain.streamEvents(text), which reports every step as it runs (instant: no model,
- * nothing leaves the browser), and replays those events slowly.
+ * Draws the "What happens when you press Send" diagram under the chat. To show LangChain's real steps it replays
+ * record.js's recording of the message slowly: the chain run once more with chain.streamEvents(text), which reports
+ * every step as it runs (instant: no model, nothing leaves the browser). The street view replays the same recording.
  * index.html calls showDiagram() on the line marked EXTRA; remove it and the chat works the same.
  */
 import { createFlow } from "/lib/flow.js";
@@ -36,38 +36,27 @@ const SPEC = {
   ],
 };
 
-// The diagram adds its own place under the chat, so index.html needs no diagram HTML.
+// The diagram adds its own place on the page (style.css gives it its own row, under the street view),
+// so index.html needs no diagram HTML.
 const box = document.createElement("div");
-box.style.width = "100%";
+box.className = "diagram";
 document.body.append(box);
 const flow = createFlow(box, SPEC);
 
-/** The chain steps worth showing (LangChain also reports unnamed internal steps). */
-const SHOW = new Set(["hello-chain", "normalize", "rules", "is empty?", "is greeting?",
-  "reply: hint", "reply: Hello World", "reply: fallback"]);
 const short = (v) => (v && typeof v === "object" && "reply" in v ? `{reply: “${v.reply}”, rule: ${v.rule}}` : JSON.stringify(v));
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 let run = 0;                      // a newer message cancels an older replay
 
-/** Runs the chain with streamEvents() and keeps the named steps' events (real names and times). */
-async function record(chain, text) {
-  const events = [];
-  const t0 = performance.now();
-  for await (const e of chain.streamEvents(text, { version: "v2" })) {
-    if (!SHOW.has(e.name) || (e.event !== "on_chain_start" && e.event !== "on_chain_end")) continue;
-    events.push({ event: e.event, name: e.name, ms: performance.now() - t0, output: e.data?.output });
-  }
-  return events;
-}
-
 /**
  * Replays one message: the calls on the way in, LangChain's events, then each return on the way back.
  * @param {string} text What the user typed.
- * @param {object} chain The chain from agent.js.
+ * @param {Promise<{events: object[]}>} recording record.js's recording of this message (the named steps' events,
+ *   with their real names, outputs and times).
  */
-export async function showDiagram(text, chain) {
+export async function showDiagram(text, recording) {
   const id = ++run;
-  const events = await record(chain, text);
+  const { events } = await recording;
+  if (id !== run) return;
   const result = events.find((e) => e.event === "on_chain_end" && e.name === "hello-chain").output;
   const typed = `“${text.trim().slice(0, 30)}”`;
   const reply = `“${result.reply.slice(0, 40)}”`;

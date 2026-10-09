@@ -15,11 +15,65 @@
       <button type="submit">Send</button>
     </form>
   </main>
+  <!-- EXTRA: the "About this step" panel next to the chat (not part of the agent; delete it and the chat works the same). -->
+  <aside class="about" aria-label="About this step">
+    <details open>
+      <summary>What you learn</summary>
+      <ul>
+        <li>An agent can be one plain function: <code>respond(message)</code> takes your text and returns a reply</li>
+        <li>How a page reacts to Send: the form's <code>"submit"</code> event runs <code>onSend(e)</code></li>
+        <li>Rules are fast and predictable, but they only know what you wrote down</li>
+      </ul>
+    </details>
+    <details>
+      <summary>How a message travels</summary>
+      <ol>
+        <li><b>Send</b> (or Enter): the browser fires a <code>"submit"</code> event on the form, and <code>onSend(e)</code> runs.</li>
+        <li><b>onSend(e)</b> in <code>index.html</code> reads the text, puts your bubble on the page with
+          <code>add(text, "you")</code> (unless it's empty or only spaces) and calls <code>respond(text)</code>.</li>
+        <li><b>respond()</b> in <code>agent.js</code> trims the text and goes down its rules in order: empty → a hint;
+          starts with hello, hi or hey → "Hello World"; anything else → a nudge.</li>
+        <li><b>add(reply, "bot")</b> puts the reply on the page, and the browser draws it in its next frame.</li>
+      </ol>
+      <p>All of it runs in your browser. <code>respond()</code> usually takes less time than the browser's clock can
+        measure; most of the wait until you see the reply is the browser's next frame (a 60 Hz screen draws one every
+        16.7 ms). "Where the time went", under the street view's tracker, shows your last message's real times.</p>
+    </details>
+    <details>
+      <summary>What leaves your browser</summary>
+      <ul>
+        <li><b>Once, when the page opens:</b> your browser downloads the page's files from the server:
+          <code>index.html</code>, <code>style.css</code>, <code>agent.js</code>, and the extras' scripts
+          (<code>extras/*.js</code>, <code>/lib/town.js</code>, <code>/lib/flow.js</code>).</li>
+        <li><b>For each message: nothing.</b> There's no request; your text stays in this tab.</li>
+        <li><b>Check it:</b> press F12 → <b>Network</b> and send a message: no new row appears. The street view's server
+          panel counts the page's requests since your first message: it stays at 0.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Limits</summary>
+      <ul>
+        <li><b>Only greetings:</b> hello, hi or hey at the start, in any case ("Hi there", "HEY!"). Anything else, even
+          "helloooo" or "say hello", gets the same nudge.</li>
+        <li><b>No memory:</b> each message is answered on its own; earlier ones make no difference.</li>
+        <li>It can't understand anything else: step 2 sends your message to a real model.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Safety</summary>
+      <ul>
+        <li><b>No script injection:</b> messages are shown with <code>textContent</code>, so typing HTML or a
+          <code>&lt;script&gt;</code> tag shows it as plain text; it never runs.</li>
+        <li><b>No keys or secrets:</b> there's no model and no account, so the code has nothing to steal.</li>
+        <li><b>Nothing to protect:</b> nothing is sent or stored. Close the tab and the chat is gone.</li>
+      </ul>
+    </details>
+  </aside>
 <script type="module">
   // Page wiring for step 1: read the input, ask the agent (agent.js), show both messages.
   import { respond } from "./agent.js";
   import { showDiagram } from "./extras/diagram.js";   // EXTRA: the "what happens" diagram (not part of the agent)
-  import { showStreet } from "./extras/street.js";     // EXTRA: the same trip as a street scene with a truck
+  import { showStreet } from "./extras/street.js";     // EXTRA: the same trip as a street scene with a car
 
   const log = document.getElementById("log");      // the scrolling message list
   const input = document.getElementById("msg");    // the text box
@@ -35,15 +89,19 @@
 
   /** Runs when you press Send or Enter (the form's "submit" event). */
   function onSend(e) {
+    const marks = { submit: e.timeStamp, onSend: performance.now() };   // EXTRA: real times (e.timeStamp: when "submit" fired)
     e.preventDefault();                // stay on the page instead of submitting the form
     const text = input.value;
     if (text.trim()) add(text, "you");
+    marks.respond = performance.now();                                 // EXTRA
     const reply = respond(text);       // ← the call into agent.js
+    marks.returned = performance.now();                                // EXTRA
     add(reply, "bot");                 // ← the reply goes back onto the page
+    marks.added = performance.now();                                   // EXTRA
     input.value = "";
     input.focus();
     showDiagram(text, reply);          // EXTRA: replay this message in the diagram
-    showStreet(text, reply);           // EXTRA: and as a truck trip in the street view
+    showStreet(text, reply, marks);    // EXTRA: and as a car trip in the street view, with its real times
   }
   document.getElementById("form").addEventListener("submit", onSend);
 </script>

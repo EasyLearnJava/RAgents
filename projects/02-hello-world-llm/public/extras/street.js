@@ -204,7 +204,12 @@ function build() {
   log.append(head, list, el("p", "st-note", "From your browser's own record (Resource Timing). Hosts ending in googleapis.com are Google Cloud. " +
     "The App Check token was fetched when the page loaded and is renewed about every 35 minutes, so a message normally makes " +
     "one request: the one to Gemini."));
-  const timing = timingPanel(), tls = tlsPanel();
+  // Under the tracker: where the time really went for your last message (the sums are in timing.js).
+  const timing = t.timingPanel({ fmt,
+    where: { browser: "your browser", google: "Google, over the internet", both: "your browser + Google" },
+    hint: "Send a message: each stage's real time shows here, measured by your browser.",
+    measured: "Measured by your browser: its own clock, and Resource Timing for the requests to Google." });
+  const tls = tlsPanel();
   const debug = LOCAL ? debugPanel() : null;
   ui.card.append(root, track.el, ui.now, timing.el, tls.el, ...(debug ? [debug.el] : []), log);
   document.body.append(ui.card);        // style.css gives it its own row under the chat
@@ -393,52 +398,6 @@ async function crypt(st, tw, end, mode, words, kind = "you") {
     st.car.carry(words, kind);
     for (const e of ["near", "far"]) st.bridge.sign(e, "");
   }
-}
-
-/**
- * Under the tracker: where the time really went for your last message (the sums are in timing.js). Each stage is a
- * slice of one bar and a row with its time and share: blue is your browser, orange is Google (over the internet) and
- * striped is both, where the page can't split them. While you wait, the stage you're waiting on counts up.
- * It's redrawn five times a second, so it updates its rows in place: rebuilding them would restart the waiting pulse,
- * stop the bar from growing smoothly and clear any text you select.
- */
-function timingPanel() {
-  const box = el("div", "st-timing");
-  const bar = el("div", "st-tbar"), list = el("ol", "st-tlist");
-  const note = el("p", "st-note", "Send a message: each stage's real time shows here, measured by your browser.");
-  box.append(el("p", "st-label", "⏱ Where the time went: real times for your last message (the street view is slowed down)"), bar, list, note);
-  const WHERE = { browser: "your browser", google: "Google, over the internet", both: "your browser + Google" };
-  /** Gives `parent` exactly n children (new ones from make()) and returns them. */
-  const keep = (parent, n, make) => {
-    while (parent.children.length > n) parent.lastElementChild.remove();
-    while (parent.children.length < n) parent.append(make());
-    return [...parent.children];
-  };
-  /** Sets text or a class only when it changed (rewriting the same text would still clear a selection in it). */
-  const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  const cls = (node, name) => { if (node.className !== name) node.className = name; };
-  const blank = () => { const li = el("li"); li.append(el("i"), el("span", "nm"), el("small", "wh"), el("b"), el("small", "pc")); return li; };
-  return {
-    el: box,
-    /** Draws what stages() in timing.js returns. */
-    show({ rows, total, live, note: text }) {
-      const share = (ms) => (total > 0 ? `${Math.round((100 * ms) / total)}%` : "");
-      const kind = (r) => `${r.where}${r.live ? " live" : ""}`;
-      keep(bar, rows.length, () => el("span")).forEach((slice, i) => {
-        cls(slice, kind(rows[i]));
-        slice.style.flexGrow = String(Math.max(1, rows[i].ms));      // the same node each time, so it grows smoothly
-        slice.title = `${rows[i].name}: ${fmt(rows[i].ms)}`;
-      });
-      const items = [...rows.map((r) => [kind(r), r.name, WHERE[r.where], fmt(r.ms) + (r.live ? "…" : ""), share(r.ms)]),
-        ["total", live ? "So far" : "Total: from Send to the reply on the page", "", fmt(total) + (live ? "…" : ""), ""]];
-      keep(list, items.length, blank).forEach((li, i) => {
-        const [name, ...texts] = items[i];
-        cls(li, name);
-        texts.forEach((s, j) => put(li.children[j + 1], s));
-      });
-      put(note, text || "Measured by your browser: its own clock, and Resource Timing for the requests to Google.");
-    },
-  };
 }
 
 /** Under the scene: what the HTTPS bridge uses to encrypt and decrypt, step by step (they light up as the car passes). */
